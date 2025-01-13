@@ -59,7 +59,7 @@ python bot.py
 
 ## Đóng góp
 
-Mọi đóng góp đều được chào đơn. Vui lòng tạo issue hoặc pull request.
+Mọi đóng góp đều được chào đón. Vui lòng tạo issue hoặc pull request.
 
 ## Lưu ý
 
