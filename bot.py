@@ -110,6 +110,14 @@ class Bot(commands.Bot):
     async def on_command_error(self, ctx, exception):
         if isinstance(exception, commands.CommandNotFound):
             await ctx.send("Lệnh không tồn tại!")
+        elif isinstance(exception, commands.MissingRequiredArgument):
+            await ctx.send("Thiếu tham số cần thiết!")
+        elif isinstance(exception, commands.MissingPermissions):
+            await ctx.send("Bạn không có quyền thực hiện lệnh này!")
+        elif isinstance(exception, commands.BotMissingPermissions):
+            await ctx.send("Bot không có quyền thực hiện lệnh này!")
+        elif isinstance(exception, commands.NotOwner):
+            await ctx.send("Bạn không phải là chủ sở hữu của bot!")
         else:
             raise exception
 

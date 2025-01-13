@@ -45,6 +45,7 @@ class Sync(commands.Cog):
     
     @commands.hybrid_command(name="setp", description="Đặt prefix cho server")
     @commands.has_permissions(administrator=True)
+    @commands.bot_has_permissions(send_messages=True)
     @app_commands.describe(prefix="Prefix mới cho server")
     async def setp(self, ctx: commands.Context, prefix: str) -> None:
         """Đặt prefix mới cho server hiện tại"""
