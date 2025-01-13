@@ -2,37 +2,39 @@ import sqlite3
 from pathlib import Path
 
 class Database:
+    """Lớp xử lý kết nối và thao tác với cơ sở dữ liệu SQLite"""
+    
     def __init__(self):
-        # Create database directory if it doesn't exist
+        # Tạo thư mục database nếu chưa tồn tại
         db_dir = Path('./database')
         db_dir.mkdir(exist_ok=True)
         
-        # Connect to SQLite database (creates if not exists)
+        # Kết nối đến cơ sở dữ liệu SQLite (tạo mới nếu chưa tồn tại)
         self.conn = sqlite3.connect('./database/bot.db')
         self.cursor = self.conn.cursor()
         self.setup()
 
     def setup(self):
-        """Create initial tables"""
-        # Example table creation
+        """Khởi tạo các bảng trong cơ sở dữ liệu"""
+        # Tạo bảng guilds để lưu cấu hình cho mỗi server
         self.cursor.execute('''
         CREATE TABLE IF NOT EXISTS guilds (
-            guild_id INTEGER PRIMARY KEY,
-            prefix TEXT DEFAULT '$',
-            log_channel INTEGER,
-            welcome_channel INTEGER,
-            mod_role INTEGER,
-            admin_role INTEGER,
-            auto_role INTEGER,
-            welcome_message TEXT
+            guild_id INTEGER PRIMARY KEY,      -- ID của server Discord
+            prefix TEXT DEFAULT '$',           -- Prefix tùy chỉnh cho server
+            log_channel INTEGER,              -- Kênh log
+            welcome_channel INTEGER,          -- Kênh chào mừng
+            mod_role INTEGER,                 -- Role người kiểm duyệt
+            admin_role INTEGER,               -- Role quản trị viên
+            auto_role INTEGER,                -- Role tự động gán
+            welcome_message TEXT              -- Tin nhắn chào mừng
         )
         ''')
         self.conn.commit()
     
     def close(self):
-        """Close database connection"""
+        """Đóng kết nối database"""
         self.conn.close()
 
     def __del__(self):
-        """Destructor to ensure connection is closed"""
+        """Hàm hủy để đảm bảo đóng kết nối"""
         self.close()

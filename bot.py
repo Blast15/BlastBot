@@ -16,11 +16,20 @@ except Exception as e:
     sys.exit(1)
 
 class Bot(commands.Bot):
+    """
+    Lớp chính của Bot Discord
+    Xử lý việc khởi tạo, kết nối và quản lý các tính năng cơ bản của bot
+    """
     def __init__(self):
-        # Khởi tạo các quyền mặc định cho bot
+        # Khởi tạo các quyền cần thiết cho bot
         intent = discord.Intents.default()
-        intent.message_content = True
-        super().__init__(command_prefix=self.get_prefix, intents=intent, description="Đố ông biết đấy!!", help_command=None)
+        intent.message_content = True  # Cho phép bot đọc nội dung tin nhắn
+        super().__init__(
+            command_prefix=self.get_prefix,  # Sử dụng prefix động
+            intents=intent,
+            description="Đố ông biết đấy!!",  # Mô tả bot
+            help_command=None  # Tắt lệnh trợ giúp mặc định
+        )
         # Khởi tạo kết nối database
         self.db = Database()
 
@@ -33,8 +42,8 @@ class Bot(commands.Bot):
         # Cài đặt trạng thái của bot
         await self.change_presence(
             activity=discord.Activity(
-                type=discord.ActivityType.watching, 
-                name=f'đang phục vụ {len(self.guilds)} máy chủ'
+                type=discord.ActivityType.custom, 
+                name=f'Đang phục vụ {len(self.guilds)} máy chủ'
             ),
             status=discord.Status.online
         )

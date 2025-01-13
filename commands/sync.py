@@ -3,6 +3,8 @@ from discord import app_commands
 from discord.ext import commands
 
 class Sync(commands.Cog):
+    """Cog xử lý đồng bộ hóa các lệnh slash"""
+    
     def __init__(self, bot):
         self.bot = bot
 
@@ -41,24 +43,25 @@ class Sync(commands.Cog):
         embed = discord.Embed(description=description, color=color if 'color' in locals() else 0xBEBEFE)
         await ctx.send(embed=embed)
     
-    @commands.hybrid_command(name="setp", description="Set the prefix for the guild")
+    @commands.hybrid_command(name="setp", description="Đặt prefix cho server")
     @commands.has_permissions(administrator=True)
-    @app_commands.describe(prefix="The new prefix for the guild")
+    @app_commands.describe(prefix="Prefix mới cho server")
     async def setp(self, ctx: commands.Context, prefix: str) -> None:
-        """Set the prefix for the guild"""
+        """Đặt prefix mới cho server hiện tại"""
         guild_id = ctx.guild.id
 
         try:
+            # Cập nhật hoặc thêm mới prefix vào database
             self.bot.db.cursor.execute(
                 "INSERT OR REPLACE INTO guilds (guild_id, prefix) VALUES (?, ?)",
                 (guild_id, prefix)
             )
             self.bot.db.conn.commit()
         except Exception as e:
-            await ctx.send(f"An error occurred: {e}")
+            await ctx.send(f"Đã xảy ra lỗi: {e}")
             return
 
-        await ctx.send(f"Prefix set to `{prefix}`")
+        await ctx.send(f"Đã đặt prefix thành `{prefix}`")
 
 async def setup(bot):
     await bot.add_cog(Sync(bot))

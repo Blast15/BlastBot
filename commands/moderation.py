@@ -3,16 +3,23 @@ from discord.ext import commands
 from discord import app_commands
 from discord.ext.commands import Context
 
-
 class Moderation(commands.Cog, name="moderation"):
+    """Cog xử lý các lệnh kiểm duyệt và quản lý server"""
+    
     def __init__(self, bot):
         self.bot = bot
     
     @commands.hybrid_command(name="kick", description="Đá một người ra khỏi máy chủ")
-    @commands.has_permissions(kick_members=True)
-    @commands.bot_has_permissions(kick_members=True)
+    @commands.has_permissions(kick_members=True)  # Yêu cầu quyền đá thành viên
+    @commands.bot_has_permissions(kick_members=True)  # Bot cần có quyền đá thành viên
     @app_commands.describe(member="Người bị đá", reason="Lý do")
     async def kick(self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do") -> None:
+        """
+        Đá một thành viên ra khỏi server
+        Parameters:
+            member (discord.Member): Thành viên cần đá
+            reason (str): Lý do đá thành viên (không bắt buộc)
+        """
         member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(
             member.id
         )
@@ -45,12 +52,16 @@ class Moderation(commands.Cog, name="moderation"):
                 await ctx.send(embed=embed)
     
     @commands.hybrid_command(name="ban", description="Cấm một người dùng khỏi máy chủ")
-    @commands.has_permissions(ban_members=True)
-    @commands.bot_has_permissions(ban_members=True)
+    @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
+    @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
     @app_commands.describe(member="Người bị cấm", reason="Lý do")
-    async def ban(
-        self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do"
-    ):
+    async def ban(self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do"):
+        """
+        Cấm một thành viên khỏi server
+        Parameters:
+            member (discord.Member): Thành viên cần cấm
+            reason (str): Lý do cấm thành viên (không bắt buộc)
+        """
         member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(
             member.id
         )
@@ -82,3 +93,6 @@ class Moderation(commands.Cog, name="moderation"):
                 color=0xE02B2B,
             )
             await ctx.send(embed=embed)
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(Moderation(bot))
