@@ -25,19 +25,30 @@ class Bot(commands.Bot):
 
 
     async def on_ready(self):
-        print(f'{self.user} đã hoạt động')
+        print(f'Logged in as {self.user} (ID: {self.user.id})')
+        print(f'Connected to {len(self.guilds)} guilds')
+        print('------')
+        
+        # Set bot's status
+        await self.change_presence(
+            activity=discord.Activity(
+                type=discord.ActivityType.watching, 
+                name=f'{len(self.guilds)} servers'
+            ),
+            status=discord.Status.online
+        )
 
 
     async def setup_hook(self):
         try:
-            # Unload all extensions
+            # Dỡ toàn bộ extension
             for extension in list(bot.extensions):
                 try:
                     await bot.unload_extension(extension)
                 except Exception as e:
                     print(f"Failed to unload extension {extension}: {e}")
 
-            # Load extensions from commands folder
+            # Tải toàn bộ extension từ các thư mục commands và events
             if not os.path.exists('./commands'):
                 print("Commands directory not found")
                 return
@@ -50,6 +61,20 @@ class Bot(commands.Bot):
                         print(f"Loaded extension '{extension}'")
                     except Exception as e:
                         print(f"Failed to load extension {extension}: {e}")
+             
+            if not os.path.exists('./events'):
+                print("Events directory not found")
+                return
+            
+            for filename in os.listdir('./events'):
+                if filename.endswith(".py"):
+                    extension = filename[:-3]
+                    try:
+                        await bot.load_extension(f"events.{extension}")
+                        print(f"Loaded extension '{extension}'")
+                    except Exception as e:
+                        print(f"Failed to load extension {extension}: {e}")
+
         except Exception as e:
             print(f"Error in setup_hook: {e}")
 
