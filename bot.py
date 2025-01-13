@@ -5,52 +5,52 @@ from dotenv import load_dotenv
 import os
 import sys
 
-# Load environment variables
+# Tải các biến môi trường
 try:
     load_dotenv()
     TOKEN = os.getenv('TOKEN')
     if not TOKEN:
-        raise ValueError("Token not found in .env file")
+        raise ValueError("Không tìm thấy Token trong tệp .env")
 except Exception as e:
-    print(f"Error loading environment variables: {e}")
+    print(f"Lỗi khi tải biến môi trường: {e}")
     sys.exit(1)
 
 class Bot(commands.Bot):
     def __init__(self):
+        # Khởi tạo các quyền mặc định cho bot
         intent = discord.Intents.default()
         intent.message_content = True
         super().__init__(command_prefix=self.get_prefix, intents=intent, description="Đố ông biết đấy!!", help_command=None)
+        # Khởi tạo kết nối database
         self.db = Database()
 
-
-
     async def on_ready(self):
-        print(f'Logged in as {self.user} (ID: {self.user.id})')
-        print(f'Connected to {len(self.guilds)} guilds')
+        # In thông tin khi bot đã sẵn sàng hoạt động
+        print(f'Đã đăng nhập với tên {self.user} (ID: {self.user.id})')
+        print(f'Đã kết nối với {len(self.guilds)} máy chủ')
         print('------')
         
-        # Set bot's status
+        # Cài đặt trạng thái của bot
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching, 
-                name=f'{len(self.guilds)} servers'
+                name=f'đang phục vụ {len(self.guilds)} máy chủ'
             ),
             status=discord.Status.online
         )
 
-
     async def setup_hook(self):
         try:
-            # Dỡ toàn bộ extension
+            # Dỡ toàn bộ extension hiện có
             for extension in list(bot.extensions):
                 try:
                     await bot.unload_extension(extension)
                 except Exception as e:
-                    print(f"Failed to unload extension {extension}: {e}")
+                    print(f"Lỗi khi dỡ extension {extension}: {e}")
 
-            # Tải toàn bộ extension từ các thư mục commands và events
+            # Tải các lệnh từ thư mục commands
             if not os.path.exists('./commands'):
-                print("Commands directory not found")
+                print("Không tìm thấy thư mục commands")
                 return
 
             for filename in os.listdir('./commands'):
@@ -58,12 +58,13 @@ class Bot(commands.Bot):
                     extension = filename[:-3]
                     try:
                         await bot.load_extension(f"commands.{extension}")
-                        print(f"Loaded extension '{extension}'")
+                        print(f"Đã tải extension '{extension}'")
                     except Exception as e:
-                        print(f"Failed to load extension {extension}: {e}")
+                        print(f"Lỗi khi tải extension {extension}: {e}")
              
+            # Tải các sự kiện từ thư mục events
             if not os.path.exists('./events'):
-                print("Events directory not found")
+                print("Không tìm thấy thư mục events")
                 return
             
             for filename in os.listdir('./events'):
@@ -71,19 +72,22 @@ class Bot(commands.Bot):
                     extension = filename[:-3]
                     try:
                         await bot.load_extension(f"events.{extension}")
-                        print(f"Loaded extension '{extension}'")
+                        print(f"Đã tải extension '{extension}'")
                     except Exception as e:
-                        print(f"Failed to load extension {extension}: {e}")
+                        print(f"Lỗi khi tải extension {extension}: {e}")
 
         except Exception as e:
-            print(f"Error in setup_hook: {e}")
+            print(f"Lỗi trong setup_hook: {e}")
 
     async def get_prefix(self, message):
+        # Prefix mặc định của bot
         default_prefix = '!'
 
+        # Nếu tin nhắn không từ server nào, dùng prefix mặc định
         if message.guild is None:
             return default_prefix
         
+        # Lấy prefix tùy chỉnh từ database
         try:
             self.db.cursor.execute(
                 "SELECT prefix FROM guilds WHERE guild_id = ?",
@@ -94,13 +98,13 @@ class Bot(commands.Bot):
         except Exception as e:
             return default_prefix
 
-# Start bot
+# Khởi động bot
 try:
     bot = Bot()
     bot.run(TOKEN)
 except discord.LoginFailure:
-    print("Failed to login: Invalid token")
+    print("Đăng nhập thất bại: Token không hợp lệ")
     sys.exit(1)
 except Exception as e:
-    print(f"Error running bot: {e}")
+    print(f"Lỗi khi chạy bot: {e}")
     sys.exit(1)

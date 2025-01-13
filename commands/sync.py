@@ -43,6 +43,7 @@ class Sync(commands.Cog):
     
     @commands.hybrid_command(name="setp", description="Set the prefix for the guild")
     @commands.has_permissions(administrator=True)
+    @app_commands.describe(prefix="The new prefix for the guild")
     async def setp(self, ctx: commands.Context, prefix: str) -> None:
         """Set the prefix for the guild"""
         guild_id = ctx.guild.id

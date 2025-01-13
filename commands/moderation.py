@@ -1,0 +1,84 @@
+import discord
+from discord.ext import commands
+from discord import app_commands
+from discord.ext.commands import Context
+
+
+class Moderation(commands.Cog, name="moderation"):
+    def __init__(self, bot):
+        self.bot = bot
+    
+    @commands.hybrid_command(name="kick", description="Đá một người ra khỏi máy chủ")
+    @commands.has_permissions(kick_members=True)
+    @commands.bot_has_permissions(kick_members=True)
+    @app_commands.describe(member="Người bị đá", reason="Lý do")
+    async def kick(self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do") -> None:
+        member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(
+            member.id
+        )
+        if member.guild_permissions.administrator:
+            embed = discord.Embed(
+                description="Người dùng có quyền quản trị viên.", color=0xE02B2B
+            )
+            await ctx.send(embed=embed)
+        else:
+            try:
+                embed = discord.Embed(
+                    description=f"**{member}** đã bị đuổi bởi **{ctx.author}**!",
+                    color=0xBEBEFE,
+                )
+                embed.add_field(name="Lý do:", value=reason)
+                await ctx.send(embed=embed)
+                try:
+                    await member.send(
+                        f"Bạn đã bị đuổi bởi **{ctx.author}** từ **{ctx.guild.name}**!\nLý do: {reason}"
+                    )
+                except:
+                    # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                    pass
+                await member.kick(reason=reason)
+            except:
+                embed = discord.Embed(
+                    description="Đã xảy ra lỗi khi cố gắng đuổi người dùng. Đảm bảo rằng vai trò của bot cao hơn vai trò của người dùng bạn muốn đuổi.",
+                    color=0xE02B2B,
+                )
+                await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(name="ban", description="Cấm một người dùng khỏi máy chủ")
+    @commands.has_permissions(ban_members=True)
+    @commands.bot_has_permissions(ban_members=True)
+    @app_commands.describe(member="Người bị cấm", reason="Lý do")
+    async def ban(
+        self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do"
+    ):
+        member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(
+            member.id
+        )
+        try:
+            if member.guild_permissions.administrator:
+                embed = discord.Embed(
+                    description="Người dùng có quyền quản trị viên.", color=0xE02B2B
+                )
+                await ctx.send(embed=embed)
+            else:
+                embed = discord.Embed(
+                    description=f"**{member}** đã bị cấm bởi **{ctx.author}**!",
+                    color=0xBEBEFE,
+                )
+                embed.add_field(name="Lý do:", value=reason)
+                await ctx.send(embed=embed)
+                try:
+                    await member.send(
+                        f"Bạn đã bị cấm bởi **{ctx.author}** từ **{ctx.guild.name}**!\nLý do: {reason}"
+                    )
+                except:
+                    # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                    pass
+                await member.ban(reason=reason)
+        except:
+            embed = discord.Embed(
+                title="Lỗi!",
+                description="Đã xảy ra lỗi khi cố gắng cấm người dùng. Đảm bảo rằng vai trò của tôi cao hơn vai trò của người dùng bạn muốn cấm.",
+                color=0xE02B2B,
+            )
+            await ctx.send(embed=embed)
