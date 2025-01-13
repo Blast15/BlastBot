@@ -63,6 +63,16 @@ class Sync(commands.Cog):
             return
 
         await ctx.send(f"Đã đặt prefix thành `{prefix}`")
+    
+    @commands.command(
+        name="shut",
+        description="Tắt bot"
+        )
+    @commands.is_owner()
+    async def shut(self, ctx: commands.Context) -> None:
+        """Tắt bot"""
+        await ctx.send("Đang tắt bot...")
+        await ctx.bot.close()
 
 async def setup(bot):
     await bot.add_cog(Sync(bot))
