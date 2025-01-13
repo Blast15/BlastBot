@@ -1,10 +1,9 @@
 # BlastBot - Discord Bot
 
-A versatile Discord bot built with Python, providing various utility and entertainment features for your Discord server.
+Bot discord để học python, hơi non tay nên đừng nói lời cay đắng
 
 ## Features
 
-- Music playback
 - Server management
 - Utility commands
 - Entertainment features
@@ -24,25 +23,20 @@ A versatile Discord bot built with Python, providing various utility and enterta
    ```
 3. Create a `.env` file with your Discord bot token:
    ```
-   DISCORD_TOKEN=your_bot_token_here
+   TOKEN=your_bot_token_here
    ```
 4. Run the bot:
    ```bash
-   python main.py
+   python bot.py
    ```
 
 ## Basic Commands
 
-- `!help` - Shows list of available commands
 - `!sync` - Đồng bộ hóa các lệnh slash
 - `!unsync` - Hủy đồng bộ hóa các lệnh slash
 - `!setp` - Đặt prefix cho guild
-- `!ping` - Check bot latency
 
 ## Contributing
 
-Feel free to submit issues and enhancement requests!
+Đóng góp thoải mái
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
