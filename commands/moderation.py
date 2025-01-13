@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from discord.ext.commands import Context
+from datetime import timedelta
 
 class Moderation(commands.Cog, name="moderation"):
     """Cog xử lý các lệnh kiểm duyệt và quản lý server"""
@@ -93,6 +94,50 @@ class Moderation(commands.Cog, name="moderation"):
                 color=0xE02B2B,
             )
             await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(
+        name="timeout",
+        description="Cấm một người dùng khỏi máy chủ trong một khoảng thời gian nhất định",
+    )
+    @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
+    @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
+    @app_commands.describe(
+        member="Người bị khóa mõm",
+        duration="Thời gian khóa mõm (phút)",
+        reason="Lý do khóa mõm",
+    )
+    async def timeout(self, ctx: Context, member: discord.Member, duration: int, *, reason: str = "Không có lý do") -> None:
+        member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(member.id)
+        if member.guild_permissions.administrator:
+            embed = discord.Embed(
+                description="Người dùng có quyền quản trị viên.", color=0xE02B2B
+            )
+            await ctx.send(embed=embed)
+        else:
+            try:
+                timeout_duration = timedelta(minutes=duration)
+                await member.timeout(timeout_duration, reason=reason)
+                embed = discord.Embed(
+                    description=f"**{member}** đã bị khóa mõm bởi **{ctx.author}** trong {duration} phút!",
+                    color=0xBEBEFE,
+                )
+                embed.add_field(name="Lý do:", value=reason)
+                await ctx.send(embed=embed)
+                try:
+                    await member.send(
+                        f"Bạn đã bị khóa mõm bởi **{ctx.author}** từ **{ctx.guild.name}** trong {duration} phút!\nLý do: {reason}"
+                    )
+                except:
+                    # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                    pass
+            except:
+                embed = discord.Embed(
+                    title="Lỗi!",
+                    description="Đã xảy ra lỗi khi cố gắng khóa mõm người dùng. Đảm bảo rằng vai trò của bot cao hơn vai trò của người dùng bạn muốn khóa mõm.",
+                    color=0xE02B2B,
+                )
+                await ctx.send(embed=embed)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Moderation(bot))

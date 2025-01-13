@@ -106,6 +106,12 @@ class Bot(commands.Bot):
             return prefix[0] if prefix else default_prefix
         except Exception as e:
             return default_prefix
+    
+    async def on_command_error(self, ctx, exception):
+        if isinstance(exception, commands.CommandNotFound):
+            await ctx.send("Lệnh không tồn tại!")
+        else:
+            raise exception
 
 # Khởi động bot
 try:
