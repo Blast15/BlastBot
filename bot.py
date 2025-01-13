@@ -90,7 +90,7 @@ class Bot(commands.Bot):
 
     async def get_prefix(self, message):
         # Prefix mặc định của bot
-        default_prefix = '!'
+        default_prefix = '?'
 
         # Nếu tin nhắn không từ server nào, dùng prefix mặc định
         if message.guild is None:
