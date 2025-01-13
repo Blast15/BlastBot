@@ -29,3 +29,5 @@ Thumbs.db
 
 # Database
 database/bot.db
+
+discord.log
