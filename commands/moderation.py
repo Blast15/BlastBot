@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -216,8 +217,8 @@ class Moderation(commands.Cog, name="moderation"):
             await ctx.send(embed=embed)
     
     @commands.hybrid_command(name="purge", description="Xóa một số lượng tin nhắn trong kênh")
-    @commands.has_permissions(manage_messages=True)  # Yêu cầu quyền quản lý tin nhắn
-    @commands.bot_has_permissions(manage_messages=True)  # Bot cần có quyền quản lý tin nhắn
+    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True)
     @app_commands.describe(amount="Số lượng tin nhắn cần xóa")
     async def purge(self, ctx: Context, amount: int) -> None:
         """
@@ -226,35 +227,27 @@ class Moderation(commands.Cog, name="moderation"):
             amount (int): Số lượng tin nhắn cần xóa
         """
         try:
+            if isinstance(ctx.interaction, discord.Interaction):
+                await ctx.interaction.response.defer(ephemeral=False)
+            
             if amount <= 0:
-                embed = discord.Embed(
-                    description="Số lượng tin nhắn cần xóa phải lớn hơn 0",
-                    color=0xE02B2B
-                )
-                await ctx.send(embed=embed)
+                await ctx.send(embed=discord.Embed(description="⚠️ Số lượng tin nhắn phải lớn hơn 0.", color=0xE02B2B))
                 return
+
+            deleted = await ctx.channel.purge(limit=min(amount + 1, 101))
             
-            if amount > 100:
-                amount = 100
+            embed = discord.Embed(description=f"✅ Đã xóa {len(deleted)-1} tin nhắn!", color=0x77B255)
+            msg = await ctx.channel.send(embed=embed)
             
-            deleted = await ctx.channel.purge(limit=amount + 1)
-            count = len(deleted) - 1  
-            
-            embed = discord.Embed(
-                description=f"✅ Đã xóa {count} tin nhắn!",
-                color=0x77B255
-            )
-            confirmation = await ctx.send(embed=embed)
-            
-            await confirmation.delete(delay=5)
-            
-        except:
-            embed = discord.Embed(
-            title="Lỗi!",
-            description="Bot không có quyền xóa tin nhắn trong kênh này",
-            color=0xE02B2B
-            )
-            await ctx.send(embed=embed)
+            await asyncio.sleep(5)
+            await msg.delete()
+
+        except discord.errors.Forbidden:
+            await ctx.send(embed=discord.Embed(description="❌ Bot không có quyền xóa tin nhắn.", color=0xE02B2B))
+        except Exception as e:
+            await ctx.send(embed=discord.Embed(description=f"❌ Lỗi: {str(e)}", color=0xE02B2B))
+
+
 
 
 async def setup(bot: commands.Bot) -> None:
