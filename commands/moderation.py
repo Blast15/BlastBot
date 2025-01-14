@@ -142,6 +142,13 @@ class Moderation(commands.Cog, name="moderation"):
         reason="Lý do khóa mõm",
     )
     async def timeout(self, ctx: Context, member: discord.Member, duration: int, *, reason: str = "Không có lý do") -> None:
+        '''
+        Cấm một người dùng khỏi máy chủ trong một khoảng thời gian nhất định
+        Parameters:
+            member (discord.Member): Người bị khóa mõm
+            duration (int): Thời gian khóa mõm (phút)
+            reason (str): Lý do khóa mõm (không bắt buộc)
+        '''
         member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(member.id)
         if member.guild_permissions.administrator:
             embed = discord.Embed(
@@ -172,6 +179,82 @@ class Moderation(commands.Cog, name="moderation"):
                     color=0xE02B2B,
                 )
                 await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(name="untimeout", description="Bỏ khóa mõm một người dùng khỏi máy chủ")
+    @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
+    @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
+    @app_commands.describe(member="Người bị bỏ khóa mõm", reason="Lý do")
+    async def untimeout(self, ctx: Context, member: discord.Member, *, reason: str = "Không có lý do") -> None:
+        '''
+        Bỏ khóa mõm một người dùng khỏi server
+        Parameters:
+            member (discord.Member): Người bị bỏ khóa mõm
+            reason (str): Lý do bỏ khóa mõm (không bắt buộc)
+        '''
+        member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(member.id)
+        try:
+            await member.untimeout(reason=reason)
+            embed = discord.Embed(
+                description=f"**{member}** đã được bỏ khóa mõm bởi **{ctx.author}**!",
+                color=0xBEBEFE,
+            )
+            embed.add_field(name="Lý do:", value=reason)
+            await ctx.send(embed=embed)
+            try:
+                await member.send(
+                    f"Bạn đã được bỏ khóa mõm bởi **{ctx.author}** từ **{ctx.guild.name}**!\nLý do: {reason}"
+                )
+            except:
+                # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                pass
+        except:
+            embed = discord.Embed(
+                title="Lỗi!",
+                description="Đã xảy ra lỗi khi cố gắng bỏ khóa mõm người dùng. Đảm bảo rằng vai trò của tôi cao hơn vai trò của người dùng bạn muốn bỏ khóa mõm.",
+                color=0xE02B2B,
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(name="purge", description="Xóa một số lượng tin nhắn trong kênh")
+    @commands.has_permissions(manage_messages=True)  # Yêu cầu quyền quản lý tin nhắn
+    @commands.bot_has_permissions(manage_messages=True)  # Bot cần có quyền quản lý tin nhắn
+    @app_commands.describe(amount="Số lượng tin nhắn cần xóa")
+    async def purge(self, ctx: Context, amount: int) -> None:
+        """
+        Xóa một số lượng tin nhắn trong kênh
+        Parameters:
+            amount (int): Số lượng tin nhắn cần xóa
+        """
+        try:
+            if amount <= 0:
+                embed = discord.Embed(
+                    description="Số lượng tin nhắn cần xóa phải lớn hơn 0",
+                    color=0xE02B2B
+                )
+                await ctx.send(embed=embed)
+                return
+            
+            if amount > 100:
+                amount = 100
+            
+            deleted = await ctx.channel.purge(limit=amount + 1)
+            count = len(deleted) - 1  
+            
+            embed = discord.Embed(
+                description=f"✅ Đã xóa {count} tin nhắn!",
+                color=0x77B255
+            )
+            confirmation = await ctx.send(embed=embed)
+            
+            await confirmation.delete(delay=5)
+            
+        except:
+            embed = discord.Embed(
+            title="Lỗi!",
+            description="Bot không có quyền xóa tin nhắn trong kênh này",
+            color=0xE02B2B
+            )
+            await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
