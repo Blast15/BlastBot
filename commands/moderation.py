@@ -96,6 +96,41 @@ class Moderation(commands.Cog, name="moderation"):
             )
             await ctx.send(embed=embed)
     
+    @commands.hybrid_command(name="banid", description="Cấm một người dùng khỏi máy chủ bằng ID")
+    @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
+    @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
+    @app_commands.describe(member="Id bị cấm", reason="Lý do")
+    async def banid(self, ctx: Context, member: int, *, reason: str = "Không có lý do") -> None:
+        """
+        Cấm một thành viên khỏi server bằng ID
+        Parameters:
+            member (int): ID của thành viên cần cấm
+            reason (str): Lý do cấm thành viên (không bắt buộc)
+        """
+        try:
+            member = await self.bot.fetch_user(member)
+            await ctx.guild.ban(member, reason=reason)
+            embed = discord.Embed(
+                description=f"**{member}** đã bị cấm bởi **{ctx.author}**!",
+                color=0xBEBEFE,
+            )
+            embed.add_field(name="Lý do:", value=reason)
+            await ctx.send(embed=embed)
+            try:
+                await member.send(
+                    f"Bạn đã bị cấm bởi **{ctx.author}** từ **{ctx.guild.name}**!\nLý do: {reason}"
+                )
+            except:
+                # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                pass
+        except:
+            embed = discord.Embed(
+                title="Lỗi!",
+                description="Đã xảy ra lỗi khi cố gắng cấm người dùng. Đảm bảo rằng vai trò của tôi cao hơn vai trò của người dùng bạn muốn cấm.",
+                color=0xE02B2B,
+            )
+            await ctx.send(embed=embed)
+    
     @commands.hybrid_command(name="unbanid", description="Bỏ cấm một người dùng khỏi máy chủ")
     @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
     @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
