@@ -95,6 +95,41 @@ class Moderation(commands.Cog, name="moderation"):
             )
             await ctx.send(embed=embed)
     
+    @commands.hybrid_command(name="unbanid", description="Bỏ cấm một người dùng khỏi máy chủ")
+    @commands.has_permissions(ban_members=True)  # Yêu cầu quyền cấm thành viên
+    @commands.bot_has_permissions(ban_members=True)  # Bot cần có quyền cấm thành viên
+    @app_commands.describe(member="Id bị bỏ cấm", reason="Lý do")
+    async def unbanid(self, ctx: Context, member: int, *, reason: str = "Không có lý do") -> None:
+        """
+        Bỏ cấm một thành viên khỏi server
+        Parameters:
+            member (int): ID của thành viên cần bỏ cấm
+            reason (str): Lý do bỏ cấm thành viên (không bắt buộc)
+        """
+        try:
+            member = await self.bot.fetch_user(member)
+            await ctx.guild.unban(member, reason=reason)
+            embed = discord.Embed(
+                description=f"**{member}** đã được bỏ cấm bởi **{ctx.author}**!",
+                color=0xBEBEFE,
+            )
+            embed.add_field(name="Lý do:", value=reason)
+            await ctx.send(embed=embed)
+            try:
+                await member.send(
+                    f"Bạn đã được bỏ cấm bởi **{ctx.author}** từ **{ctx.guild.name}**!\nLý do: {reason}"
+                )
+            except:
+                # Không thể gửi tin nhắn trong tin nhắn riêng tư của người dùng
+                pass
+        except:
+            embed = discord.Embed(
+                title="Lỗi!",
+                description="Đã xảy ra lỗi khi cố gắng bỏ cấm người dùng. Đảm bảo rằng vai trò của tôi cao hơn vai trò của người dùng bạn muốn bỏ cấm.",
+                color=0xE02B2B,
+            )
+            await ctx.send(embed=embed)
+    
     @commands.hybrid_command(
         name="timeout",
         description="Cấm một người dùng khỏi máy chủ trong một khoảng thời gian nhất định",
