@@ -314,7 +314,32 @@ class Moderation(commands.Cog, name="moderation"):
         except Exception as e:
             await ctx.send(embed=discord.Embed(description=f"❌ Lỗi: {str(e)}", color=0xE02B2B))
 
+    # @commands.hybrid_command(name="temprole", description="Gán một role tạm thời cho một người dùng")
+    # @commands.has_permissions(manage_roles=True)
+    # @commands.bot_has_permissions(manage_roles=True)
+    # @app_commands.describe(member="Người nhận role", role="Role cần gán", duration="Thời gian role (phút)")
+    # async def temprole(self, ctx: Context, member: discord.Member, role: discord.Role, duration: int) -> None:
+    #     """
+    #     Gán một role tạm thời cho một người dùng
+    #     Parameters:
+    #         member (discord.Member): Người nhận role
+    #         role (discord.Role): Role cần gán
+    #         duration (int): Thời gian role (giờ)
+    #     """
+    #     member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(member.id)
+    #     if role in member.roles:
+    #         await ctx.send(embed=discord.Embed(description=f"❌ {member.mention} đã có role này.", color=0xE02B2B))
+    #         return
 
+    #     try:
+    #         await member.add_roles(role)
+    #         expiry_time = discord.utils.utcnow().timestamp() + (duration * 60)
+    #         self.temp_roles[(member.id, role.id)] = (ctx.guild.id, expiry_time)
+    #         await ctx.send(embed=discord.Embed(description=f"✅ Đã thêm role {role.mention} cho {member.mention} trong {duration} phút.", color=0x77B255))
+    #     except discord.errors.Forbidden:
+    #         await ctx.send(embed=discord.Embed(description="❌ Bot không có quyền gán role.", color=0xE02B2B))
+    #     except Exception as e:
+    #         await ctx.send(embed=discord.Embed(description=f"❌ Lỗi: {str(e)}", color=0xE02B2B))
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Moderation(bot))

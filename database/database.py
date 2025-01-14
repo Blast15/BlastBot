@@ -21,12 +21,12 @@ class Database:
         CREATE TABLE IF NOT EXISTS guilds (
             guild_id INTEGER PRIMARY KEY,      -- ID của server Discord
             prefix TEXT DEFAULT '$',           -- Prefix tùy chỉnh cho server
-            log_channel INTEGER,              -- Kênh log
-            welcome_channel INTEGER,          -- Kênh chào mừng
-            mod_role INTEGER,                 -- Role người kiểm duyệt
-            admin_role INTEGER,               -- Role quản trị viên
-            auto_role INTEGER,                -- Role tự động gán
-            welcome_message TEXT              -- Tin nhắn chào mừng
+            log_channel INTEGER,               -- Kênh log
+            welcome_channel INTEGER,           -- Kênh chào mừng
+            mod_role INTEGER,                  -- Role người kiểm duyệt
+            admin_role INTEGER,                -- Role quản trị viên
+            auto_role INTEGER,                 -- Role tự động gán
+            welcome_message TEXT               -- Tin nhắn chào mừng
         )
         ''')
         self.conn.commit()
