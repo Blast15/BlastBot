@@ -8,39 +8,42 @@ class Sync(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="sync", description="Đồng bộ hóa các lệnh slash.")
-    @app_commands.describe(scope="Phạm vi của đồng bộ hóa. Có thể là `global` hoặc `guild`")
+    @commands.command(name="sync", description="Đồng bộ lại các lệnh slash.")
+    @app_commands.describe(
+        scope="Phạm vi của đồng bộ hóa. Có thể là `global` hoặc `guild`"
+    )
     @commands.is_owner()
     async def sync(self, ctx: commands.Context, scope: str) -> None:
-        if scope == "global":
-            await ctx.bot.tree.sync()
-            description = "Các lệnh slash đã được đồng bộ hóa toàn cầu."
-        elif scope == "guild":
-            ctx.bot.tree.copy_global_to(guild=ctx.guild)
-            await ctx.bot.tree.sync(guild=ctx.guild)
-            description = "Các lệnh slash đã được đồng bộ hóa trong guild này."
+        """Đồng bộ lại các lệnh slash"""
+        if scope not in ["global", "guild"]:
+            embed = discord.Embed(
+                description="Phạm vi phải là `global` hoặc `guild`.",
+                color=0xE02B2B
+            )
         else:
-            description = "Phạm vi phải là `global` hoặc `guild`."
-            color = 0xE02B2B
-        embed = discord.Embed(description=description, color=color if 'color' in locals() else 0xBEBEFE)
-        await ctx.send(embed=embed)
+            try:
+                if scope == "global":
+                    # Unsync
+                    ctx.bot.tree.clear_commands(guild=None)
+                    await ctx.bot.tree.sync()
+                    # Sync
+                    await ctx.bot.tree.sync()
+                    description = "Các lệnh slash đã được đồng bộ lại toàn cầu."
+                else:  # guild
+                    # Unsync
+                    ctx.bot.tree.clear_commands(guild=ctx.guild)
+                    await ctx.bot.tree.sync(guild=ctx.guild)
+                    # Sync
+                    ctx.bot.tree.copy_global_to(guild=ctx.guild)
+                    await ctx.bot.tree.sync(guild=ctx.guild)
+                    description = "Các lệnh slash đã được đồng bộ lại trong guild này."
 
-    @commands.command(name="unsync", description="Hủy đồng bộ hóa các lệnh slash.")
-    @app_commands.describe(scope="Phạm vi của đồng bộ hóa. Có thể là `global`, `current_guild` hoặc `guild`")
-    @commands.is_owner()
-    async def unsync(self, ctx: commands.Context, scope: str) -> None:
-        if scope == "global":
-            ctx.bot.tree.clear_commands(guild=None)
-            await ctx.bot.tree.sync()
-            description = "Các lệnh slash đã được hủy đồng bộ hóa toàn cầu."
-        elif scope == "guild":
-            ctx.bot.tree.clear_commands(guild=ctx.guild)
-            await ctx.bot.tree.sync(guild=ctx.guild)
-            description = "Các lệnh slash đã được hủy đồng bộ hóa trong guild này."
-        else:
-            description = "Phạm vi phải là `global` hoặc `guild`."
-            color = 0xE02B2B
-        embed = discord.Embed(description=description, color=color if 'color' in locals() else 0xBEBEFE)
+                embed = discord.Embed(description=description, color=0xBEBEFE)
+            except Exception as e:
+                embed = discord.Embed(
+                    description=f"Đã xảy ra lỗi: {str(e)}",
+                    color=0xE02B2B
+                )
         await ctx.send(embed=embed)
     
     @commands.hybrid_command(name="setp", description="Đặt prefix cho server")
