@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
+from utils.config import Config
 
 # Tải các biến môi trường
 try:
@@ -46,27 +48,10 @@ class LoggingFormatter(logging.Formatter):
         format = format.replace("(green)", self.green + self.bold)
         formatter = logging.Formatter(format, "%Y-%m-%d %H:%M:%S", style="{")
         return formatter.format(record)
-    
-
-logger = logging.getLogger("blast_bot")
-logger.setLevel(logging.INFO)
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(LoggingFormatter())
-# File handler
-file_handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
-file_handler_formatter = logging.Formatter(
-    "[{asctime}] [{levelname:<8}] {name}: {message}", "%Y-%m-%d %H:%M:%S", style="{"
-)
-file_handler.setFormatter(file_handler_formatter)
-
-# Thêm các handler
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
 
 intents = discord.Intents.default()
 intents.message_content = True  # Cho phép bot đọc nội dung tin nhắn
+intents.members = True  # Cho phép bot đọc thông tin thành viên
 
 class Bot(commands.Bot):
     """
@@ -81,9 +66,33 @@ class Bot(commands.Bot):
             description="Đố ông biết đấy!!",  # Mô tả bot
             help_command=None  # Tắt lệnh trợ giúp mặc định
         )
-        self.logger = logger
+        self.setup_logger()
         # Khởi tạo kết nối database
         self.db = Database()
+    
+    def setup_logger(self):
+        self.logger = logging.getLogger("blast_bot")
+        self.logger.setLevel(logging.INFO)
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(LoggingFormatter())
+        # File handler
+        file_handler = RotatingFileHandler(
+            filename="discord.log",
+            maxBytes=10000000,  # 10MB
+            backupCount=5,
+            encoding="utf-8"
+        )
+        file_handler_formatter = logging.Formatter(
+            "[{asctime}] [{levelname:<8}] {name}: {message}", "%Y-%m-%d %H:%M:%S", style="{"
+        )
+        file_handler.setFormatter(file_handler_formatter)
+
+        # Thêm các handler
+        self.logger.addHandler(console_handler)
+        self.logger.addHandler(file_handler)
+
 
     async def on_ready(self):
         # In thông tin khi bot đã sẵn sàng hoạt động
@@ -141,7 +150,7 @@ class Bot(commands.Bot):
 
     async def get_prefix(self, message):
         # Prefix mặc định của bot
-        default_prefix = '?'
+        default_prefix = Config.DEFAULT_PREFIX
 
         # Nếu tin nhắn không từ server nào, dùng prefix mặc định
         if message.guild is None:
@@ -175,10 +184,10 @@ class Bot(commands.Bot):
 # Khởi động bot
 try:
     bot = Bot()
-    bot.run(TOKEN)
+    bot.run(Config.TOKEN)
 except discord.LoginFailure:
-    logger.error("Đăng nhập thất bại: Token không hợp lệ")
+    bot.logger.error("Đăng nhập thất bại: Token không hợp lệ")
     sys.exit(1)
 except Exception as e:
-    logger.error(f"Lỗi khi chạy bot: {e}")
+    bot.logger.error(f"Lỗi khi chạy bot: {e}")
     sys.exit(1)
