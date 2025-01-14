@@ -8,7 +8,6 @@ class TempRoleCleanup(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.cleanup_temproles.start()
-        self.bot.logger.info("Đã khởi tạo TempRoleCleanup")
 
     @tasks.loop(minutes=1)
     async def cleanup_temproles(self):
@@ -26,7 +25,6 @@ class TempRoleCleanup(commands.Cog):
             if not expired_roles:
                 return
                 
-            self.bot.logger.info(f"Tìm thấy {len(expired_roles)} role cần gỡ")
 
             # Xử lý từng role
             for guild_id, user_id, role_id in expired_roles:
@@ -49,9 +47,6 @@ class TempRoleCleanup(commands.Cog):
                 if role in member.roles:
                     try:
                         await member.remove_roles(role)
-                        self.bot.logger.info(
-                            f"Đã gỡ role {role.name} của {member.name} trong {guild.name}"
-                        )
                     except Exception as e:
                         self.bot.logger.error(
                             f"Lỗi khi gỡ role {role.name}: {str(e)}"

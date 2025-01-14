@@ -39,7 +39,7 @@ class Help(commands.Cog):
         else:
             # Hiển thị tổng quan các lệnh
             embed = discord.Embed(
-                title="Trợ giúp Bot Discord",
+                title="Trợ giúp Blast Bot",
                 description="Danh sách các lệnh có sẵn:",
                 color=0x2F3136
             )
