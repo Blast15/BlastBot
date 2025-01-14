@@ -1,4 +1,5 @@
 import asyncio
+import os
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -282,6 +283,36 @@ class Moderation(commands.Cog, name="moderation"):
         except Exception as e:
             await ctx.send(embed=discord.Embed(description=f"❌ Lỗi: {str(e)}", color=0xE02B2B))
 
+    @commands.hybrid_command(name="archive", description="Lưu lịch sử tin nhắn vào một file")
+    @commands.has_permissions(manage_messages=True)
+    @app_commands.describe(amount="Số lượng tin nhắn cần lưu")
+    async def archive(self, ctx: Context, amount: int) -> None:
+        """
+        Lưu lịch sử tin nhắn vào một file
+        Parameters:
+            amount (int): Số lượng tin nhắn cần lưu
+        """
+        try:
+            if isinstance(ctx.interaction, discord.Interaction):
+                await ctx.interaction.response.defer(ephemeral=False)
+            
+            if amount <= 0:
+                await ctx.send(embed=discord.Embed(description="⚠️ Số lượng tin nhắn phải lớn hơn 0.", color=0xE02B2B))
+                return
+
+            messages = await ctx.channel.history(limit=min(amount, 100)).flatten()
+            messages.reverse()
+
+            with open(f"{ctx.channel.name}_archive.txt", "w", encoding="utf-8") as file:
+                for message in messages:
+                    file.write(f"[{message.created_at}] {message.author}: {message.content}\n")
+            
+            await ctx.send(file=discord.File(f"{ctx.channel.name}_archive.txt"))
+            os.remove(f"{ctx.channel.name}_archive.txt")
+        except discord.errors.Forbidden:
+            await ctx.send(embed=discord.Embed(description="❌ Bot không có quyền xóa tin nhắn.", color=0xE02B2B))
+        except Exception as e:
+            await ctx.send(embed=discord.Embed(description=f"❌ Lỗi: {str(e)}", color=0xE02B2B))
 
 
 
