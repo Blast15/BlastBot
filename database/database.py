@@ -18,7 +18,7 @@ class Database:
         """Khởi tạo các bảng trong cơ sở dữ liệu"""
         # Tạo bảng guilds để lưu cấu hình cho mỗi server
         self.cursor.execute('''
-        CREATE TABLE IF NOT EXISTS guilds (
+            CREATE TABLE IF NOT EXISTS guilds (
             guild_id INTEGER PRIMARY KEY,      -- ID của server Discord
             prefix TEXT DEFAULT '$',           -- Prefix tùy chỉnh cho server
             log_channel INTEGER,               -- Kênh log
@@ -27,7 +27,18 @@ class Database:
             admin_role INTEGER,                -- Role quản trị viên
             auto_role INTEGER,                 -- Role tự động gán
             welcome_message TEXT               -- Tin nhắn chào mừng
-        )
+            )
+        ''')
+
+        # Tạo bảng temprole để lưu role tạm thời
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS temprole (
+            guild_id INTEGER,                          -- ID của server Discord
+            user_id INTEGER,                           -- ID của người dùng
+            role_id INTEGER,                           -- ID của role
+            time INTEGER,                              -- Thời gian còn lại
+            PRIMARY KEY (guild_id, user_id, role_id)
+            )
         ''')
         self.conn.commit()
     
