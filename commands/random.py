@@ -4,7 +4,23 @@ import aiohttp
 import random
 
 class Random(commands.Cog):
-    """Cog xử lý các lệnh liên quan đến Pokemon ngẫu nhiên"""
+    """A Discord bot cog for random Pokemon generation commands.
+    This cog provides functionality to get random Pokemon information from Generation 1
+    using the PokeAPI. It includes a command to fetch and display detailed Pokemon stats
+    and information in an embedded message format.
+    Attributes:
+        bot (commands.Bot): The Discord bot instance this cog is attached to.
+    Commands:
+        rd: Fetches and displays information about a random Generation 1 Pokemon.
+            The information includes:
+            - Basic stats (height, weight, base experience, types)
+            - Base statistics (HP, Attack, Defense, etc.)
+            - Special abilities
+    Usage:
+        /rd: Get information about a random Pokemon from Generation 1
+    Cooldown:
+        5 seconds per user
+    """
     
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -15,7 +31,31 @@ class Random(commands.Cog):
     )
     @commands.cooldown(1, 5, commands.BucketType.user)  # Giới hạn 1 lệnh/5 giây/người dùng
     async def rd(self, ctx: commands.Context) -> None:
-        """Lấy và hiển thị thông tin về một Pokemon ngẫu nhiên từ thế hệ 1."""
+        """Gets information about a random Generation 1 Pokemon and displays it in an embedded message.
+        This command fetches data from the PokeAPI for a randomly selected Pokemon from ID 1-151 (Gen 1)
+        and creates a Discord embed containing the Pokemon's:
+        - Name and ID number
+        - Sprite image
+        - Basic information (height, weight, base experience, types)
+        - Base stats
+        - Abilities
+        Parameters
+        ----------
+        ctx : commands.Context
+            The context of the command invocation
+        Returns
+        -------
+        None
+        Raises
+        ------
+        aiohttp.ClientError
+            If there is an error connecting to the PokeAPI
+        Exception
+            For any other unexpected errors
+        Example
+        -------
+        !rd -> Returns an embed with random Pokemon information
+        """
         async with aiohttp.ClientSession() as session:
             try:
                 # Chọn ngẫu nhiên một Pokemon từ thế hệ 1 (ID: 1-151)

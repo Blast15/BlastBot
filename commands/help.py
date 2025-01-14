@@ -3,17 +3,37 @@ from discord.ext import commands
 from typing import Optional
 
 class Help(commands.Cog):
-    """Hiển thị trợ giúp về các lệnh của bot"""
+    """A cog that provides help command functionality for the bot.
+    This cog implements a help command that displays either a general overview of all available commands
+    grouped by their cogs, or detailed information about a specific command when requested.
+    Attributes:
+        bot: The bot instance that loaded this cog.
+    Methods:
+        help(ctx, command): Shows help information about commands.
+            - If no command is specified, displays an overview of all commands grouped by cogs
+            - If a command name is provided, shows detailed information about that specific command
+    """
     
     def __init__(self, bot):
         self.bot = bot
 
     @commands.hybrid_command(name="help", description="Hiển thị trợ giúp về các lệnh")
     async def help(self, ctx: commands.Context, command: Optional[str] = None) -> None:
-        """
-        Hiển thị trợ giúp về các lệnh
-        Parameters:
-            command (str): Tên lệnh cần xem trợ giúp chi tiết
+        """Help command to display available commands and their usage.
+        This command provides two functionalities:
+        1. Without parameters: Shows an overview of all available commands grouped by cogs
+        2. With command parameter: Shows detailed help for a specific command
+            ctx (commands.Context): The invocation context
+            command (Optional[str]): The name of command to get detailed help for. Defaults to None.
+        Returns:
+            None
+        Example usage:
+            !help
+            !help play
+        Notes:
+            - Hidden commands are not shown in the overview
+            - Empty cogs (with no commands) are skipped
+            - For specific commands, shows aliases and usage if available
         """
         if command:
             # Hiển thị trợ giúp chi tiết cho một lệnh cụ thể
