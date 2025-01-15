@@ -465,7 +465,7 @@ class Moderation(commands.Cog, name="moderation"):
                 await ctx.send(embed=discord.Embed(description="⚠️ Số lượng tin nhắn phải lớn hơn 0.", color=0xE02B2B))
                 return
 
-            messages = [message async for message in ctx.channel.history(limit=min(amount, 100))]
+            messages = [message async for message in ctx.channel.history(limit=min(amount, 1000))]
             messages.reverse()
 
             with open(f"{ctx.channel.name}_archive.txt", "w", encoding="utf-8") as file:
