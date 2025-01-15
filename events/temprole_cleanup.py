@@ -1,112 +1,149 @@
 import discord
-from discord.ext import tasks, commands
+from discord.ext import commands
+import asyncio
 from discord.utils import utcnow
 
 class TempRoleCleanup(commands.Cog):
-    """A cog that handles automatic removal of temporary roles when they expire.
-    This cog periodically checks for and removes temporary roles that have passed their
-    expiration time. It queries a database table 'temprole' that stores temporary role
-    assignments with their expiration timestamps.
-    Attributes:
-        bot: The Discord bot instance this cog is attached to.
-        cleanup_temproles: A background task that runs every minute to check for expired roles.
-    Methods:
-        cleanup_temproles(): The main task that removes expired temporary roles.
-        before_cleanup(): Ensures the bot is ready before starting the cleanup task.
-    Database Schema:
-        Table 'temprole' with columns:
-            - guild_id: The Discord server ID
-            - user_id: The member's Discord user ID 
-            - role_id: The temporary role's ID
-            - time: Unix timestamp for when the role should be removed
-    Error Handling:
-        - Logs errors during role removal operations
-        - Safely handles missing members and roles
-        - Continues operation even if individual role removals fail
-    """
-
     def __init__(self, bot):
         self.bot = bot
-        self.cleanup_temproles.start()
+        self.scheduled_tasks = {}  # Chứa các task được lên lịch
+        self.bot.loop.create_task(self.initialize_tasks())
 
-    @tasks.loop(minutes=1)
-    async def cleanup_temproles(self):
+    async def initialize_tasks(self):
         """
-        Checks and removes expired temporary roles from guild members.
-        This coroutine checks the database for any temporary roles that have expired and removes them 
-        from the respective guild members. It also cleans up the database entries for expired roles.
-        The function:
-        1. Queries the database for expired temporary roles
-        2. For each expired role:
-            - Gets the guild and member objects
-            - Removes the role from the member if still present
-        3. Deletes the expired entries from the database
-        Raises:
-             Exception: Any error during role removal or database operations is logged but not raised
-        Note:
-             - Uses UTC timestamps for time comparison
-             - Skips processing if guild/member/role is not found
-             - Continues processing remaining roles if an error occurs with one role
-        """
-        try:
-            current_time = utcnow().timestamp()
-            
-            # Lấy danh sách role hết hạn
-            self.bot.db.cursor.execute(
-                "SELECT guild_id, user_id, role_id FROM temprole WHERE time <= ?", 
-                (current_time,)
-            )
-            expired_roles = self.bot.db.cursor.fetchall()
-            
-            if not expired_roles:
-                return
-                
-
-            # Xử lý từng role
-            for guild_id, user_id, role_id in expired_roles:
-                guild = self.bot.get_guild(guild_id)
-                if not guild:
-                    continue
-
-                # Lấy thông tin member                    
-                try:
-                    member = guild.get_member(user_id) or await guild.fetch_member(user_id)
-                except discord.NotFound:
-                    continue
-                
-                # Lấy thông tin role
-                role = guild.get_role(role_id)
-                if not role:
-                    continue
-
-                # Gỡ role
-                if role in member.roles:
-                    try:
-                        await member.remove_roles(role)
-                    except Exception as e:
-                        self.bot.logger.error(
-                            f"Lỗi khi gỡ role {role.name}: {str(e)}"
-                        )
-
-            # Xóa dữ liệu cũ
-            self.bot.db.cursor.execute("DELETE FROM temprole WHERE time <= ?", (current_time,))
-            self.bot.db.conn.commit()
-
-        except Exception as e:
-            self.bot.logger.error(f"Lỗi trong cleanup_temproles: {str(e)}")
-
-    @cleanup_temproles.before_loop
-    async def before_cleanup(self):
-        """
-        An asynchronous method that ensures the bot is ready before any cleanup operations.
-
-        This method is called before performing any role cleanup tasks and blocks until
-        the bot's internal cache is ready to be used.
-
-        Returns:
-            None
+        Initializes and schedules temporary role removal tasks from the database.
+        This coroutine is called when the bot starts up to restore any temporary role removal
+        tasks that were saved in the database from a previous session. It:
+        1. Waits for the bot to be ready
+        2. Retrieves all temporary role entries from database
+        3. Schedules removal tasks for each entry based on remaining time
+        Parameters
+        ----------
+        self : TempRole
+            The TempRole cog instance
+        Returns
+        -------
+        None
+        Note
+        ----
+        The method uses the bot's database to fetch existing temporary roles and
+        schedules their removal using schedule_role_removal()
         """
         await self.bot.wait_until_ready()
+        current_time = utcnow().timestamp()
+        
+        self.bot.db.cursor.execute("SELECT guild_id, user_id, role_id, time FROM temprole")
+        existing_roles = self.bot.db.cursor.fetchall()
+        
+        for guild_id, user_id, role_id, removal_time in existing_roles:
+            delay = max(0, removal_time - current_time)
+            self.schedule_role_removal(guild_id, user_id, role_id, delay)
+
+    def schedule_role_removal(self, guild_id, user_id, role_id, delay):
+        """
+        Schedule the removal of a temporary role from a user after a specified delay.
+        Args:
+            guild_id (int): The ID of the Discord guild (server)
+            user_id (int): The ID of the user to remove the role from
+            role_id (int): The ID of the role to remove
+            delay (float): The delay in seconds before removing the role
+        Notes:
+            - If there's an existing scheduled task for the same (guild, user, role) combination,
+              it will be cancelled before creating a new one
+            - The task is stored in self.scheduled_tasks with (guild_id, user_id, role_id) as the key
+        """
+        task_key = (guild_id, user_id, role_id)
+        
+        if task_key in self.scheduled_tasks:
+            self.scheduled_tasks[task_key].cancel()
+        
+        task = self.bot.loop.create_task(
+            self._remove_role_later(guild_id, user_id, role_id, delay)
+        )
+        self.scheduled_tasks[task_key] = task
+
+    async def _remove_role_later(self, guild_id, user_id, role_id, delay):
+        """
+        Asynchronously removes a role from a user after a specified delay.
+        This method handles the delayed removal of a role from a user, including database cleanup
+        and task management. It will attempt to find the guild, member, and role, and if all
+        exist, remove the role after the specified delay.
+        Parameters:
+            guild_id (int): The ID of the guild (server) where the role removal will occur
+            user_id (int): The ID of the user to remove the role from
+            role_id (int): The ID of the role to be removed
+            delay (float): The time in seconds to wait before removing the role
+        Returns:
+            None
+        Raises:
+            No explicit raises, all exceptions are caught and logged internally
+        Note:
+            - If the guild, member, or role cannot be found, the function will exit silently
+            - The function will also clean up the associated database entry and scheduled task
+            - Any exceptions during execution are logged but not propagated
+        """
+        try:
+            await asyncio.sleep(delay)
+            
+            guild = self.bot.get_guild(guild_id)
+            if not guild:
+                return
+
+            try:
+                member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+            except discord.NotFound:
+                return
+
+            role = guild.get_role(role_id)
+            if not role:
+                return
+
+            if role in member.roles:
+                await member.remove_roles(role)
+                
+            self.bot.db.cursor.execute(
+                "DELETE FROM temprole WHERE guild_id=? AND user_id=? AND role_id=?",
+                (guild_id, user_id, role_id)
+            )
+            self.bot.db.conn.commit()
+            
+            task_key = (guild_id, user_id, role_id)
+            self.scheduled_tasks.pop(task_key, None)
+
+        except Exception as e:
+            self.bot.logger.error(f"Error in _remove_role_later: {str(e)}")
+
+    async def add_temp_role(self, guild_id, user_id, role_id, duration):
+        """
+        Adds a temporary role to a user in a guild with a specified duration.
+        This method both stores the temporary role information in the database and schedules its removal.
+        Parameters
+        ----------
+        guild_id : int
+            The ID of the guild where the role will be added
+        user_id : int
+            The ID of the user who will receive the temporary role
+        role_id : int
+            The ID of the role to be temporarily assigned
+        duration : float
+            The duration in seconds for how long the role should remain
+        Returns
+        -------
+        None
+        Notes
+        -----
+        The role removal time is stored in UTC timestamp format.
+        The role removal is scheduled using schedule_role_removal method.
+        """
+        removal_time = utcnow().timestamp() + duration
+        
+        self.bot.db.cursor.execute(
+            "INSERT INTO temprole (guild_id, user_id, role_id, time) VALUES (?, ?, ?, ?)",
+            (guild_id, user_id, role_id, removal_time)
+        )
+        self.bot.db.conn.commit()
+        
+        self.schedule_role_removal(guild_id, user_id, role_id, duration)
 
 async def setup(bot):
     await bot.add_cog(TempRoleCleanup(bot))

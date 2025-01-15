@@ -517,14 +517,13 @@ class Moderation(commands.Cog, name="moderation"):
 
         try:
             await member.add_roles(role)
-            expiry_time = discord.utils.utcnow().timestamp() + (duration * 60)
-            
-            # Lưu thông tin role tạm thời vào cơ sở dữ liệu
-            self.bot.db.cursor.execute(
-                "INSERT OR REPLACE INTO temprole (guild_id, user_id, role_id, time) VALUES (?, ?, ?, ?)",
-                (ctx.guild.id, member.id, role.id, expiry_time)
-            )
-            self.bot.db.conn.commit()
+            expiry_time = duration * 60
+            await self.bot.get_cog('TempRoleCleanup').add_temp_role(
+                guild_id=ctx.guild.id, 
+                user_id=member.id, 
+                role_id=role.id, 
+                duration=expiry_time,
+                )
             
             await ctx.send(embed=discord.Embed(description=f"✅ Đã thêm role {role.mention} cho {member.mention} trong {duration} phút.", color=0x77B255))
         except discord.errors.Forbidden:
