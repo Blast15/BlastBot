@@ -59,6 +59,7 @@ class Database:
             time (INTEGER): Duration of the temporary role
             Primary key is composite of (guild_id, user_id, role_id)
         """
+        # Bảng guilds
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS guilds (
                 guild_id INTEGER PRIMARY KEY,
