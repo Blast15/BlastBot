@@ -7,6 +7,12 @@ from discord.ext.commands import Context
 from datetime import timedelta
 from typing import Optional, Union, Literal
 
+from utils.constants import Colors, MESSAGES
+from utils.embed_helpers import (
+    create_success_embed, create_error_embed, 
+    create_warning_embed, create_mod_action_embed
+)
+
 class Moderation(commands.Cog, name="moderation"):
     """
     A cog that handles moderation and server management commands for a Discord bot.
@@ -16,19 +22,19 @@ class Moderation(commands.Cog, name="moderation"):
     
     def __init__(self, bot):
         self.bot = bot
-        self.error_color = 0xE02B2B
-        self.success_color = 0xBEBEFE
-        self.green_color = 0x77B255
     
-    async def send_mod_action_response(self, ctx: Context, title: str, member: Union[discord.Member, discord.User], 
-                              reason: str, action_type: str, success: bool = True) -> None:
+    async def send_mod_action_response(
+        self, 
+        ctx: Context, 
+        title: str, 
+        member: Union[discord.Member, discord.User], 
+        reason: str, 
+        action_type: str, 
+        success: bool = True
+    ) -> None:
         """Helper method to send consistent mod action response embeds"""
         if success:
-            embed = discord.Embed(
-                description=f"**{member}** đã bị {action_type} bởi **{ctx.author}**!",
-                color=self.success_color
-            )
-            embed.add_field(name="Lý do:", value=reason)
+            embed = create_mod_action_embed(member, action_type, ctx.author, reason)
             
             # Thử gửi tin nhắn thông báo cho người dùng bị xử lý
             try:
@@ -38,20 +44,16 @@ class Moderation(commands.Cog, name="moderation"):
             except:
                 pass  # Không thể gửi tin nhắn riêng tư
         else:
-            embed = discord.Embed(
-                title=title,
-                description=f"Đã xảy ra lỗi khi cố gắng {action_type} người dùng. Đảm bảo rằng vai trò của bot cao hơn vai trò của người dùng.",
-                color=self.error_color
+            embed = create_error_embed(
+                f"Đã xảy ra lỗi khi cố gắng {action_type} người dùng. Đảm bảo rằng vai trò của bot cao hơn vai trò của người dùng.",
+                title=title
             )
         await ctx.send(embed=embed)
     
     async def check_admin_permissions(self, ctx: Context, member: discord.Member) -> bool:
         """Check if the target member has administrator permissions"""
         if member.guild_permissions.administrator:
-            embed = discord.Embed(
-                description="Người dùng có quyền quản trị viên.", 
-                color=self.error_color
-            )
+            embed = create_error_embed("Người dùng có quyền quản trị viên.")
             await ctx.send(embed=embed)
             return True
         return False
@@ -108,10 +110,9 @@ class Moderation(commands.Cog, name="moderation"):
             await ctx.guild.ban(member, reason=reason)
             await self.send_mod_action_response(ctx, "Lỗi!", member, reason, "cấm")
         except Exception as e:
-            embed = discord.Embed(
-                title="Lỗi!",
-                description=f"Đã xảy ra lỗi khi cấm người dùng với ID {member_id}. {str(e)}",
-                color=self.error_color
+            embed = create_error_embed(
+                f"Đã xảy ra lỗi khi cấm người dùng với ID {member_id}. {str(e)}",
+                title="Lỗi!"
             )
             await ctx.send(embed=embed)
             self.bot.logger.error(f"Lỗi khi ban ID {member_id}: {str(e)}")
@@ -128,10 +129,9 @@ class Moderation(commands.Cog, name="moderation"):
             await ctx.guild.unban(member, reason=reason)
             await self.send_mod_action_response(ctx, "Lỗi!", member, reason, "bỏ cấm")
         except Exception as e:
-            embed = discord.Embed(
-                title="Lỗi!",
-                description=f"Đã xảy ra lỗi khi bỏ cấm người dùng với ID {member_id}. {str(e)}",
-                color=self.error_color
+            embed = create_error_embed(
+                f"Đã xảy ra lỗi khi bỏ cấm người dùng với ID {member_id}. {str(e)}",
+                title="Lỗi!"
             )
             await ctx.send(embed=embed)
             self.bot.logger.error(f"Lỗi khi unban ID {member_id}: {str(e)}")
@@ -184,7 +184,7 @@ class Moderation(commands.Cog, name="moderation"):
             
             embed = discord.Embed(
                 description=f"**{member}** đã bị khóa chat bởi **{ctx.author}** trong {time_display}!",
-                color=self.success_color
+                color=Colors.SUCCESS
             )
             embed.add_field(name="Lý do:", value=reason)
             await ctx.send(embed=embed)
@@ -197,10 +197,9 @@ class Moderation(commands.Cog, name="moderation"):
                 pass  # Không thể gửi tin nhắn riêng tư
                 
         except Exception as e:
-            embed = discord.Embed(
-                title="Lỗi!",
-                description=f"Đã xảy ra lỗi khi khóa chat: {str(e)}",
-                color=self.error_color
+            embed = create_error_embed(
+                f"Đã xảy ra lỗi khi khóa chat: {str(e)}",
+                title="Lỗi!"
             )
             await ctx.send(embed=embed)
             self.bot.logger.error(f"Lỗi khi timeout: {str(e)}")
@@ -218,10 +217,9 @@ class Moderation(commands.Cog, name="moderation"):
             await member.timeout(None, reason=reason)
             await self.send_mod_action_response(ctx, "Lỗi!", member, reason, "bỏ khóa chat")
         except Exception as e:
-            embed = discord.Embed(
-                title="Lỗi!",
-                description=f"Đã xảy ra lỗi khi bỏ khóa chat: {str(e)}",
-                color=self.error_color
+            embed = create_error_embed(
+                f"Đã xảy ra lỗi khi bỏ khóa chat: {str(e)}",
+                title="Lỗi!"
             )
             await ctx.send(embed=embed)
             self.bot.logger.error(f"Lỗi khi untimeout: {str(e)}")
@@ -238,25 +236,19 @@ class Moderation(commands.Cog, name="moderation"):
                 await ctx.interaction.response.defer(ephemeral=False)
             
             if amount <= 0:
-                await ctx.send(embed=discord.Embed(
-                    description="⚠️ Số lượng tin nhắn phải lớn hơn 0.", 
-                    color=self.error_color
-                ))
+                await ctx.send(embed=create_error_embed("⚠️ Số lượng tin nhắn phải lớn hơn 0."))
                 return
             
             if amount > 100:
                 amount = 100
-                await ctx.send(embed=discord.Embed(
-                    description="⚠️ Số lượng tin nhắn quá lớn, sẽ chỉ xóa 100 tin nhắn.", 
-                    color=self.error_color
-                ), delete_after=3)
+                await ctx.send(
+                    embed=create_warning_embed("⚠️ Số lượng tin nhắn quá lớn, sẽ chỉ xóa 100 tin nhắn."), 
+                    delete_after=3
+                )
 
             deleted = await ctx.channel.purge(limit=min(amount + 1, 101))
             
-            embed = discord.Embed(
-                description=f"✅ Đã xóa {len(deleted)-1} tin nhắn!", 
-                color=self.green_color
-            )
+            embed = create_success_embed(f"✅ Đã xóa {len(deleted)-1} tin nhắn!")
             msg = await ctx.channel.send(embed=embed)
             
             await asyncio.sleep(5)
@@ -266,15 +258,9 @@ class Moderation(commands.Cog, name="moderation"):
                 pass
 
         except discord.errors.Forbidden:
-            await ctx.send(embed=discord.Embed(
-                description="❌ Bot không có quyền xóa tin nhắn.", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed("❌ Bot không có quyền xóa tin nhắn."))
         except Exception as e:
-            await ctx.send(embed=discord.Embed(
-                description=f"❌ Lỗi: {str(e)}", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed(f"❌ Lỗi: {str(e)}"))
             self.bot.logger.error(f"Lỗi khi purge: {str(e)}")
 
     @commands.hybrid_command(name="archive", description="Lưu lịch sử tin nhắn vào một file")
@@ -288,24 +274,15 @@ class Moderation(commands.Cog, name="moderation"):
                 await ctx.interaction.response.defer(ephemeral=False)
             
             if amount <= 0:
-                await ctx.send(embed=discord.Embed(
-                    description="⚠️ Số lượng tin nhắn phải lớn hơn 0.", 
-                    color=self.error_color
-                ))
+                await ctx.send(embed=create_error_embed("⚠️ Số lượng tin nhắn phải lớn hơn 0."))
                 return
             
             if amount > 1000:
                 amount = 1000
-                await ctx.send(embed=discord.Embed(
-                    description="⚠️ Số lượng tin nhắn được giới hạn tối đa 1000.", 
-                    color=self.error_color
-                ), delete_after=3)
+                await ctx.send(embed=create_warning_embed("⚠️ Số lượng tin nhắn được giới hạn tối đa 1000."), delete_after=3)
 
             # Thông báo đang xử lý
-            processing_msg = await ctx.send(embed=discord.Embed(
-                description=f"⏳ Đang xử lý {amount} tin nhắn...", 
-                color=self.success_color
-            ))
+            processing_msg = await ctx.send(embed=create_success_embed(f"⏳ Đang xử lý {amount} tin nhắn..."))
 
             messages = [message async for message in ctx.channel.history(limit=amount)]
             messages.reverse()
@@ -323,10 +300,7 @@ class Moderation(commands.Cog, name="moderation"):
             
             await processing_msg.delete()
             await ctx.send(
-                embed=discord.Embed(
-                    description=f"✅ Đã lưu {len(messages)} tin nhắn.", 
-                    color=self.green_color
-                ),
+                embed=create_success_embed(f"✅ Đã lưu {len(messages)} tin nhắn."),
                 file=discord.File(file_path)
             )
             
@@ -335,15 +309,9 @@ class Moderation(commands.Cog, name="moderation"):
                 os.remove(file_path)
                 
         except discord.errors.Forbidden:
-            await ctx.send(embed=discord.Embed(
-                description="❌ Bot không có quyền đọc lịch sử tin nhắn.", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed("❌ Bot không có quyền đọc lịch sử tin nhắn."))
         except Exception as e:
-            await ctx.send(embed=discord.Embed(
-                description=f"❌ Lỗi: {str(e)}", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed(f"❌ Lỗi: {str(e)}"))
             self.bot.logger.error(f"Lỗi khi archive: {str(e)}")
             # Đảm bảo xóa tệp tạm thời nếu có lỗi
             if os.path.exists(f"{ctx.channel.name}_archive.txt"):
@@ -371,10 +339,7 @@ class Moderation(commands.Cog, name="moderation"):
         member = ctx.guild.get_member(member.id) or await ctx.guild.fetch_member(member.id)
         
         if role in member.roles:
-            await ctx.send(embed=discord.Embed(
-                description=f"❌ {member.mention} đã có role {role.mention}.", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed(f"❌ {member.mention} đã có role {role.mention}."))
             return
         
         # Chuyển đổi thời gian sang giây
@@ -400,27 +365,15 @@ class Moderation(commands.Cog, name="moderation"):
                     duration=seconds
                 )
                 
-                await ctx.send(embed=discord.Embed(
-                    description=f"✅ Đã thêm role {role.mention} cho {member.mention} trong {time_display}.", 
-                    color=self.green_color
-                ))
+                await ctx.send(embed=create_success_embed(f"✅ Đã thêm role {role.mention} cho {member.mention} trong {time_display}."))
             else:
                 await member.remove_roles(role)  # Hoàn tác nếu không tìm thấy cog
-                await ctx.send(embed=discord.Embed(
-                    description="❌ Không thể cài đặt role tạm thời vì thành phần cần thiết không khả dụng.", 
-                    color=self.error_color
-                ))
+                await ctx.send(embed=create_error_embed("❌ Không thể cài đặt role tạm thời vì thành phần cần thiết không khả dụng."))
                 
         except discord.errors.Forbidden:
-            await ctx.send(embed=discord.Embed(
-                description="❌ Bot không có quyền gán role.",
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed("❌ Bot không có quyền gán role."))
         except Exception as e:
-            await ctx.send(embed=discord.Embed(
-                description=f"❌ Lỗi: {str(e)}", 
-                color=self.error_color
-            ))
+            await ctx.send(embed=create_error_embed(f"❌ Lỗi: {str(e)}"))
             self.bot.logger.error(f"Lỗi khi temprole: {str(e)}")
             
 async def setup(bot: commands.Bot) -> None:

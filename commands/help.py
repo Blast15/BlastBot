@@ -3,34 +3,17 @@ from discord.ext import commands
 from typing import Optional, Dict, List
 import math
 
+from utils.constants import Colors, EMOJI_MAP, CATEGORY_NAMES
+
 class Help(commands.Cog):
     """A cog that provides help command functionality for the bot."""
     
     def __init__(self, bot):
         self.bot = bot
-        self.emoji_map = {
-            'moderation': '🛡️',
-            'random': '🎲',
-            'sync': '🔄',
-            'help': '❓',
-            'owner': '👑',
-            'config': '⚙️',
-            'utility': '🔧',
-            'fun': '🎮',
-            'music': '🎵',
-            'economy': '💰',
-            'leveling': '📈',
-            'giveaway': '🎁',
-            'info': 'ℹ️',
-        }
-        self.color = 0x2F3136
-        # Command categories (mapping cog names to user-friendly names)
-        self.categories = {
-            'moderation': 'Quản lý Server',
-            'random': 'Giải trí',
-            'sync': 'Cấu hình',
-            'help': 'Trợ giúp',
-        }
+        # Use emoji and category mappings from constants
+        self.emoji_map = EMOJI_MAP
+        self.categories = CATEGORY_NAMES
+        self.color = Colors.INFO
 
     def get_command_signature(self, command: commands.Command) -> str:
         """Get the properly formatted command signature with prefix and arguments."""
