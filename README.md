@@ -130,4 +130,4 @@ If you encounter any issues or have questions, please open an issue on the repos
 ## Acknowledgements
 
 - [discord.py](https://github.com/Rapptz/discord.py) - The Python library used for Discord API integration
-- [Contributors](https://github.com/yourusername/BlastBot/contributors) - Everyone who has contributed to this project
+- [Contributors](https://github.com/Blast15/BlastBot/contributors) - Everyone who has contributed to this project
