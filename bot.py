@@ -116,7 +116,7 @@ class Bot(commands.Bot):
     def __init__(self):
         # Khởi tạo các quyền cần thiết cho bot
         super().__init__(
-            command_prefix=self.get_prefix,  # Sử dụng prefix động
+            command_prefix=Bot.get_prefix,  # Sử dụng prefix động
             intents=intents,
             description="Đố ông biết đấy!!",  # Mô tả bot
             help_command=None  # Tắt lệnh trợ giúp mặc định
@@ -175,7 +175,10 @@ class Bot(commands.Bot):
             None
         """
         # In thông tin khi bot đã sẵn sàng hoạt động
-        self.logger.info(f"Đã đăng nhập với tên {self.user} (ID: {self.user.id})")
+        if self.user is not None:
+            self.logger.info(f"Đã đăng nhập với tên {self.user} (ID: {self.user.id})")
+        else:
+            self.logger.info("Đã đăng nhập, nhưng không thể lấy thông tin người dùng (self.user là None)")
         self.logger.info(f"Đã kết nối với {len(self.guilds)} máy chủ")
         
         # Cài đặt trạng thái của bot
@@ -241,13 +244,16 @@ class Bot(commands.Bot):
         except Exception as e:
             self.logger.error(f"Lỗi trong setup_hook: {e}")
 
-    async def get_prefix(self, message):
+    @staticmethod
+    async def get_prefix(bot, message):
         """
         Gets the command prefix for the bot based on the message context.
         This method retrieves the custom prefix for a guild from the database if one exists,
         otherwise returns the default prefix. For direct messages, it always returns the default prefix.
         Parameters
         ----------
+        bot : commands.Bot
+            The bot instance
         message : discord.Message
             The message object to get the prefix for
         Returns
@@ -257,10 +263,10 @@ class Bot(commands.Bot):
         Examples
         --------
         If message is from a guild with custom prefix '$':
-            >>> await bot.get_prefix(message)
+            >>> await Bot.get_prefix(bot, message)
             '$'
         If message is from DM or guild has no custom prefix:
-            >>> await bot.get_prefix(message) 
+            >>> await Bot.get_prefix(bot, message) 
             Config.DEFAULT_PREFIX
         """
         # Prefix mặc định của bot
@@ -272,11 +278,11 @@ class Bot(commands.Bot):
         
         # Lấy prefix tùy chỉnh từ database
         try:
-            self.db.cursor.execute(
+            bot.db.cursor.execute(
                 "SELECT prefix FROM guilds WHERE guild_id = ?",
                 (message.guild.id,)
             )
-            prefix = self.db.cursor.fetchone()
+            prefix = bot.db.cursor.fetchone()
             return prefix[0] if prefix else default_prefix
         except Exception as e:
             return default_prefix
@@ -284,6 +290,9 @@ class Bot(commands.Bot):
 # Khởi động bot
 try:
     bot = Bot()
+    if not isinstance(Config.TOKEN, str) or not Config.TOKEN:
+        bot.logger.error("Token không hợp lệ hoặc không được cung cấp trong Config.TOKEN")
+        sys.exit(1)
     bot.run(Config.TOKEN)
 except discord.LoginFailure:
     bot.logger.error("Đăng nhập thất bại: Token không hợp lệ")
