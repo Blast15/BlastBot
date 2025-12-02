@@ -1,10 +1,11 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import os
 from dotenv import load_dotenv
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +38,12 @@ class BlastBot(commands.Bot):
         
         # Auto-discover extensions from cogs folder
         self.initial_extensions = self._discover_extensions()
+        
+        # Thời gian khởi động bot
+        self.start_time = None
+        
+        # Task tự động restart
+        self.auto_restart_task = None
     
     def _discover_extensions(self) -> list[str]:
         """Tự động tìm và load tất cả cog modules"""
@@ -110,6 +117,15 @@ class BlastBot(commands.Bot):
             logger.info(f"🚀 Bot đã sẵn sàng! Đăng nhập với tên: {self.user.name}")
         logger.info(f"📊 Đang hoạt động trên {len(self.guilds)} servers")
         
+        # Lưu thời gian khởi động
+        self.start_time = datetime.now()
+        logger.info(f"⏰ Bot khởi động lúc: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Bắt đầu task tự động restart nếu chưa chạy
+        if self.auto_restart_task is None or self.auto_restart_task.done():
+            self.auto_restart_task = asyncio.create_task(self._auto_restart_loop())
+            logger.info("✅ Đã kích hoạt tính năng tự động khởi động lại mỗi 12 tiếng")
+        
         # Set bot status
         await self.change_presence(
             activity=discord.Activity(
@@ -121,6 +137,11 @@ class BlastBot(commands.Bot):
     async def close(self):
         """Graceful shutdown"""
         logger.info("🛑 Đang tắt bot...")
+        
+        # Hủy task tự động restart nếu đang chạy
+        if self.auto_restart_task and not self.auto_restart_task.done():
+            self.auto_restart_task.cancel()
+            logger.info("✅ Đã hủy task tự động khởi động lại")
         
         # Close database connections if exists
         try:
@@ -167,6 +188,50 @@ class BlastBot(commands.Bot):
         original_error = getattr(error, 'original', error)
         
         await handle_command_error(interaction, original_error)
+    
+    async def _auto_restart_loop(self):
+        """Background task để tự động restart bot mỗi 12 tiếng"""
+        try:
+            # Chờ 12 tiếng (43200 giây)
+            RESTART_INTERVAL = 12 * 60 * 60  # 12 giờ
+            
+            while True:
+                await asyncio.sleep(RESTART_INTERVAL)
+                
+                # Log thông tin trước khi restart
+                uptime = datetime.now() - self.start_time if self.start_time else None
+                logger.info("=" * 50)
+                logger.info("🔄 Đã đến thời gian tự động khởi động lại bot")
+                if uptime:
+                    logger.info(f"⏱️ Uptime: {uptime}")
+                logger.info("=" * 50)
+                
+                # Gửi thông báo trước khi restart (nếu có owner được cấu hình)
+                await self._notify_before_restart()
+                
+                # Đóng bot và trigger restart
+                await self.close()
+                
+        except asyncio.CancelledError:
+            logger.info("⚠️ Task tự động khởi động lại đã bị hủy")
+        except Exception as e:
+            logger.error(f"❌ Lỗi trong task tự động khởi động lại: {e}", exc_info=True)
+    
+    async def _notify_before_restart(self):
+        """Gửi thông báo cho owner trước khi restart (tùy chọn)"""
+        try:
+            owner_id = os.getenv('OWNER_ID')
+            if owner_id:
+                owner = await self.fetch_user(int(owner_id))
+                if owner:
+                    await owner.send(
+                        "🔄 Bot sẽ tự động khởi động lại trong vài giây để duy trì hiệu suất tối ưu.\n"
+                        "⏰ Thời gian: Mỗi 12 tiếng một lần."
+                    )
+                    logger.info(f"✅ Đã gửi thông báo restart cho owner (ID: {owner_id})")
+        except Exception as e:
+            # Không cần báo lỗi nếu không gửi được thông báo
+            logger.debug(f"Không thể gửi thông báo restart: {e}")
 
 
 async def main():
@@ -181,18 +246,32 @@ async def main():
     # Create data directory if not exists
     Path('data').mkdir(exist_ok=True)
     
-    # Start bot
-    bot = BlastBot()
-    
-    try:
-        await bot.start(token)
-    except KeyboardInterrupt:
-        logger.info("⚠️ Nhận tín hiệu KeyboardInterrupt (Ctrl+C)")
-    except Exception as e:
-        logger.error(f"❌ Lỗi khi chạy bot: {e}", exc_info=True)
-    finally:
-        if not bot.is_closed():
-            await bot.close()
+    # Vòng lặp restart tự động
+    while True:
+        # Start bot
+        bot = BlastBot()
+        
+        try:
+            await bot.start(token)
+        except KeyboardInterrupt:
+            logger.info("⚠️ Nhận tín hiệu KeyboardInterrupt (Ctrl+C)")
+            if not bot.is_closed():
+                await bot.close()
+            break  # Thoát vòng lặp khi người dùng dừng thủ công
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi chạy bot: {e}", exc_info=True)
+        finally:
+            if not bot.is_closed():
+                await bot.close()
+        
+        # Kiểm tra xem có phải restart tự động không
+        if bot.auto_restart_task and not bot.auto_restart_task.cancelled():
+            logger.info("🔄 Đang khởi động lại bot...")
+            await asyncio.sleep(5)  # Chờ 5 giây trước khi restart
+        else:
+            # Nếu không phải restart tự động thì thoát
+            logger.info("🛑 Bot đã dừng hoàn toàn")
+            break
 
 
 if __name__ == "__main__":
