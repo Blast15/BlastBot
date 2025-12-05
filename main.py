@@ -192,8 +192,10 @@ class BlastBot(commands.Bot):
     async def _auto_restart_loop(self):
         """Background task để tự động restart bot mỗi 12 tiếng"""
         try:
-            # Chờ 12 tiếng (43200 giây)
-            RESTART_INTERVAL = 12 * 60 * 60  # 12 giờ
+            from utils.constants import BOT_CONFIG
+            
+            # Chờ theo cấu hình (mặc định 12 giờ)
+            RESTART_INTERVAL = BOT_CONFIG['auto_restart_interval_hours'] * 60 * 60
             
             while True:
                 await asyncio.sleep(RESTART_INTERVAL)
@@ -243,13 +245,29 @@ async def main():
         logger.error("Vui lòng tạo file .env và thêm token của bạn.")
         return
     
+    # Validate token format (basic check)
+    from utils.constants import BOT_CONFIG
+    
+    if not token.strip() or len(token) < BOT_CONFIG['min_token_length']:
+        logger.error(f"❌ DISCORD_TOKEN không hợp lệ! Token phải có ít nhất {BOT_CONFIG['min_token_length']} ký tự.")
+        logger.error("Vui lòng kiểm tra lại token trong file .env")
+        return
+    
     # Create data directory if not exists
     Path('data').mkdir(exist_ok=True)
+    
+    # Max retry count để tránh infinite loop
+    from utils.constants import BOT_CONFIG
+    
+    MAX_RESTART_RETRIES = BOT_CONFIG['max_restart_retries']
+    restart_count = 0
+    last_restart_time = datetime.now()
     
     # Vòng lặp restart tự động
     while True:
         # Start bot
         bot = BlastBot()
+        bot._restart_count = restart_count
         
         try:
             await bot.start(token)
@@ -258,16 +276,37 @@ async def main():
             if not bot.is_closed():
                 await bot.close()
             break  # Thoát vòng lặp khi người dùng dừng thủ công
+        except discord.LoginFailure:
+            logger.error("❌ Token không hợp lệ! Không thể đăng nhập vào Discord.")
+            if not bot.is_closed():
+                await bot.close()
+            break
         except Exception as e:
             logger.error(f"❌ Lỗi khi chạy bot: {e}", exc_info=True)
+            restart_count += 1
+            
+            # Kiểm tra xem có phải lỗi liên tục không
+            if datetime.now() - last_restart_time < timedelta(minutes=BOT_CONFIG['restart_retry_window_minutes']):
+                if restart_count >= MAX_RESTART_RETRIES:
+                    logger.error(f"❌ Bot đã crash {MAX_RESTART_RETRIES} lần trong 5 phút. Dừng để tránh infinite loop.")
+                    if not bot.is_closed():
+                        await bot.close()
+                    break
+            else:
+                # Reset counter nếu đã qua 5 phút kể từ lần restart cuối
+                restart_count = 1
+            
+            last_restart_time = datetime.now()
         finally:
             if not bot.is_closed():
                 await bot.close()
         
         # Kiểm tra xem có phải restart tự động không
         if bot.auto_restart_task and not bot.auto_restart_task.cancelled():
-            logger.info("🔄 Đang khởi động lại bot...")
-            await asyncio.sleep(5)  # Chờ 5 giây trước khi restart
+            from utils.constants import BOT_CONFIG
+            logger.info("🔄 Đang khởi động lại bot... (Auto-restart)")
+            restart_count = 0  # Reset counter cho auto-restart
+            await asyncio.sleep(BOT_CONFIG['restart_delay_seconds'])  # Chờ trước khi restart
         else:
             # Nếu không phải restart tự động thì thoát
             logger.info("🛑 Bot đã dừng hoàn toàn")

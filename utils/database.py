@@ -6,6 +6,7 @@ from typing import Optional, Dict
 import logging
 from utils.error_handler import DatabaseError
 from datetime import datetime, timedelta
+from collections import OrderedDict
 
 logger = logging.getLogger('BlastBot.Database')
 # Ngăn logger của Database ghi ra console thông qua root logger
@@ -19,13 +20,83 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 
+class LRUCache:
+    """Simple LRU Cache implementation with TTL support"""
+    
+    def __init__(self, maxsize: int = 128, ttl_seconds: int = 300):
+        self.maxsize = maxsize
+        self.ttl = timedelta(seconds=ttl_seconds)
+        self.cache: OrderedDict[int, dict] = OrderedDict()
+        self.timestamps: Dict[int, datetime] = {}
+    
+    def get(self, key: int) -> Optional[dict]:
+        """Get item from cache"""
+        if key not in self.cache:
+            return None
+        
+        # Check if expired
+        timestamp = self.timestamps.get(key)
+        if timestamp and datetime.utcnow() - timestamp >= self.ttl:
+            self.delete(key)
+            return None
+        
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+        return self.cache[key].copy()
+    
+    def set(self, key: int, value: dict):
+        """Set item in cache"""
+        # Remove if exists
+        if key in self.cache:
+            del self.cache[key]
+        
+        # Add new item
+        self.cache[key] = value.copy()
+        self.timestamps[key] = datetime.utcnow()
+        
+        # Remove oldest if over maxsize
+        if len(self.cache) > self.maxsize:
+            oldest_key = next(iter(self.cache))
+            self.delete(oldest_key)
+    
+    def delete(self, key: int):
+        """Delete item from cache"""
+        if key in self.cache:
+            del self.cache[key]
+        if key in self.timestamps:
+            del self.timestamps[key]
+    
+    def clear(self):
+        """Clear all cache"""
+        self.cache.clear()
+        self.timestamps.clear()
+    
+    def get_stats(self) -> dict:
+        """Get cache statistics"""
+        current_time = datetime.utcnow()
+        valid_entries = sum(
+            1 for key, timestamp in self.timestamps.items()
+            if current_time - timestamp < self.ttl
+        )
+        
+        return {
+            'total_entries': len(self.cache),
+            'valid_entries': valid_entries,
+            'expired_entries': len(self.cache) - valid_entries,
+            'maxsize': self.maxsize,
+            'ttl_seconds': self.ttl.total_seconds()
+        }
+
+
 class Database:
     """Wrapper cho aiosqlite database operations với caching"""
     
-    # Class-level cache cho guild configs
-    _guild_config_cache: Dict[int, dict] = {}
-    _cache_timestamps: Dict[int, datetime] = {}
-    _cache_ttl = timedelta(minutes=5)  # Cache TTL: 5 minutes
+    # Class-level LRU cache cho guild configs
+    from utils.constants import CACHE_CONFIG
+    _guild_config_cache = LRUCache(
+        maxsize=CACHE_CONFIG['guild_config_maxsize'],
+        ttl_seconds=CACHE_CONFIG['guild_config_ttl_seconds']
+    )
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.getenv('DB_PATH', './data/bot.db')
@@ -88,11 +159,10 @@ class Database:
     async def get_guild_config(self, guild_id: int) -> dict:
         """Lấy config của guild (with caching)"""
         # Check cache first
-        if guild_id in self._guild_config_cache:
-            cache_time = self._cache_timestamps.get(guild_id)
-            if cache_time and datetime.utcnow() - cache_time < self._cache_ttl:
-                logger.debug(f"Cache hit for guild {guild_id}")
-                return self._guild_config_cache[guild_id].copy()
+        cached_config = self._guild_config_cache.get(guild_id)
+        if cached_config is not None:
+            logger.debug(f"Cache hit for guild {guild_id}")
+            return cached_config
         
         default_config = {
             'guild_id': guild_id,
@@ -113,8 +183,7 @@ class Database:
                 if row:
                     config = dict(row)
                     # Update cache
-                    self._guild_config_cache[guild_id] = config.copy()
-                    self._cache_timestamps[guild_id] = datetime.utcnow()
+                    self._guild_config_cache.set(guild_id, config)
                     return config
                 else:
                     # Tạo config mới nếu chưa có
@@ -124,8 +193,7 @@ class Database:
                     )
                     await self.conn.commit()
                     # Cache default config
-                    self._guild_config_cache[guild_id] = default_config.copy()
-                    self._cache_timestamps[guild_id] = datetime.utcnow()
+                    self._guild_config_cache.set(guild_id, default_config)
                     return default_config
         except aiosqlite.Error as e:
             logger.error(f"Failed to get guild config for {guild_id}: {e}")
@@ -171,29 +239,15 @@ class Database:
         """
         if guild_id is None:
             cls._guild_config_cache.clear()
-            cls._cache_timestamps.clear()
             logger.debug("Cleared all guild config cache")
-        elif guild_id in cls._guild_config_cache:
-            del cls._guild_config_cache[guild_id]
-            if guild_id in cls._cache_timestamps:
-                del cls._cache_timestamps[guild_id]
+        else:
+            cls._guild_config_cache.delete(guild_id)
             logger.debug(f"Invalidated cache for guild {guild_id}")
     
     @classmethod
     def get_cache_stats(cls) -> dict:
         """Get cache statistics"""
-        current_time = datetime.utcnow()
-        valid_entries = sum(
-            1 for guild_id, timestamp in cls._cache_timestamps.items()
-            if current_time - timestamp < cls._cache_ttl
-        )
-        
-        return {
-            'total_entries': len(cls._guild_config_cache),
-            'valid_entries': valid_entries,
-            'expired_entries': len(cls._guild_config_cache) - valid_entries,
-            'ttl_seconds': cls._cache_ttl.total_seconds()
-        }
+        return cls._guild_config_cache.get_stats()
     
     async def get_user_data(self, user_id: int, guild_id: int) -> dict:
         """Lấy dữ liệu user"""

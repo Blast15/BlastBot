@@ -38,7 +38,12 @@ class ClearCommand(BaseModerationCog):
                 return
             
             # Validate amount
-            is_valid, error_msg = validate_amount(amount, 1, 100)
+            from utils.constants import CLEAR_CONFIG
+            is_valid, error_msg = validate_amount(
+                amount,
+                CLEAR_CONFIG['min_messages'],
+                CLEAR_CONFIG['max_messages']
+            )
             if not is_valid:
                 await self.send_error(interaction, error_msg or "Invalid amount", use_followup=True)
                 return
@@ -58,7 +63,8 @@ class ClearCommand(BaseModerationCog):
                 return
             
             # Phân loại tin nhắn theo độ tuổi (Discord chỉ cho bulk delete tin nhắn < 14 ngày)
-            two_weeks_ago = datetime.utcnow() - timedelta(days=14)
+            from utils.constants import CLEAR_CONFIG
+            two_weeks_ago = datetime.utcnow() - timedelta(days=CLEAR_CONFIG['message_age_limit_days'])
             bulk_delete_messages = [msg for msg in messages if msg.created_at.replace(tzinfo=None) > two_weeks_ago]
             old_messages = [msg for msg in messages if msg.created_at.replace(tzinfo=None) <= two_weeks_ago]
             
@@ -66,8 +72,9 @@ class ClearCommand(BaseModerationCog):
             
             # Xóa tin nhắn mới theo batch để tránh rate limit
             if bulk_delete_messages:
-                # Xóa từng batch 50 tin nhắn (giới hạn an toàn)
-                batch_size = 50
+                from utils.constants import CLEAR_CONFIG
+                # Xóa từng batch tin nhắn (giới hạn an toàn)
+                batch_size = CLEAR_CONFIG['batch_size']
                 for i in range(0, len(bulk_delete_messages), batch_size):
                     batch = bulk_delete_messages[i:i + batch_size]
                     try:
@@ -75,7 +82,7 @@ class ClearCommand(BaseModerationCog):
                         deleted_count += len(batch)
                         # Delay giữa các batch để tránh rate limit
                         if i + batch_size < len(bulk_delete_messages):
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(CLEAR_CONFIG['batch_delay_seconds'])
                     except discord.HTTPException as e:
                         self.logger.warning(f"Error deleting batch: {e}")
             
@@ -86,7 +93,7 @@ class ClearCommand(BaseModerationCog):
                         await message.delete()
                         deleted_count += 1
                         # Delay dài hơn cho tin nhắn cũ
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(CLEAR_CONFIG['old_message_delete_delay_seconds'])
                     except discord.HTTPException as e:
                         self.logger.warning(f"Error deleting old message: {e}")
             

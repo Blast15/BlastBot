@@ -195,7 +195,9 @@ Contributions are welcome! Please:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) - see the [LICENSE](LICENSE) file for details.
+
+**Note:** AGPL-3.0 requires that if you run a modified version of this software as a network service, you must make the complete source code available to users of that service.
 
 ## 🐛 Troubleshooting
 

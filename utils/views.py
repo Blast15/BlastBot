@@ -167,7 +167,7 @@ class CustomButton(discord.ui.Button):
         label: Optional[str] = None,
         emoji: Optional[str] = None,
         disabled: bool = False,
-        callback_func: Optional[Callable] = None
+        callback_func: Optional[Callable[[discord.Interaction, discord.ui.Button], Any]] = None
     ):
         super().__init__(style=style, label=label, emoji=emoji, disabled=disabled)
         self.callback_func = callback_func
@@ -271,6 +271,10 @@ class RoleSelectMenu(discord.ui.Select):
                         errors.append(f"Không thể xóa {role.mention}")
                     except discord.HTTPException as e:
                         errors.append(f"Lỗi khi xóa {role.mention}: {str(e)[:50]}")
+        
+        # Small delay to prevent race conditions
+        from utils.constants import ROLE_MENU_CONFIG
+        await asyncio.sleep(ROLE_MENU_CONFIG['processing_delay_seconds'])
         
         response = []
         if added_roles:
