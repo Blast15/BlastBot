@@ -224,6 +224,12 @@ class Database:
         if not self.conn:
             return
 
+        # Đảm bảo guild tồn tại để không vi phạm FOREIGN KEY constraint
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO guilds (guild_id) VALUES (?)",
+            (guild_id,)
+        )
+
         await self.conn.execute(
             """
             INSERT INTO role_menus (message_id, guild_id, channel_id, role_ids, mode)
@@ -237,6 +243,7 @@ class Database:
             (message_id, guild_id, channel_id, json.dumps(role_ids), mode)
         )
         await self.conn.commit()
+
 
     async def get_role_menus(self) -> list[dict]:
         if not self.conn:
