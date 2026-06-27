@@ -8,7 +8,8 @@ import logging
 from utils.embeds import success_embed, error_embed, warning_embed
 from utils.views import ConfirmView
 from utils.constants import COMMAND_COOLDOWNS
-from .base import BaseModerationCog, validate_duration
+from utils.error_handler import validate_number_range, ValidationError
+from .base import BaseModerationCog, require_guild_permissions
 
 
 TIMEOUT_REASONS = [
@@ -50,6 +51,7 @@ class TimeoutCommand(BaseModerationCog):
     @app_commands.autocomplete(reason=timeout_reason_autocomplete)
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
+    @require_guild_permissions(moderate_members=True)
     @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['timeout'], key=lambda i: i.user.id)
     async def timeout(
         self,
@@ -60,10 +62,6 @@ class TimeoutCommand(BaseModerationCog):
     ):
         """Timeout member"""
         try:
-            # Validate permissions
-            if not await self.validate_permissions(interaction, 'moderate_members'):
-                return
-            
             # Validate target
             is_valid, error_msg = await self.validate_target(interaction, member)
             if not is_valid:
@@ -77,10 +75,7 @@ class TimeoutCommand(BaseModerationCog):
                 return
             
             # Validate duration (1-10080 phút = 7 ngày)
-            is_valid, error_msg = validate_duration(duration, 1, 10080)
-            if not is_valid:
-                await self.send_error(interaction, f"Thời gian timeout phải từ 1 phút đến 7 ngày (10080 phút)!")
-                return
+            validate_number_range(duration, 1, 10080, "Thời gian timeout (phút)")
             
             # Xác nhận
             view = ConfirmView(interaction.user)
@@ -128,6 +123,12 @@ class TimeoutCommand(BaseModerationCog):
                 ),
                 view=None
             )
+        except ValidationError as e:
+            await self.send_error(interaction, e.user_message)
         except Exception as e:
             self.logger.error(f"Error in timeout command: {e}", exc_info=True)
             await self.safe_error_response(interaction, "Lỗi", f"Không thể timeout: {str(e)}")
+
+
+async def setup(bot):
+    await bot.add_cog(TimeoutCommand(bot))

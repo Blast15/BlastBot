@@ -2,11 +2,13 @@
 
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 from utils.embeds import success_embed, error_embed, warning_embed
 from utils.views import ConfirmView
 from utils.constants import COMMAND_COOLDOWNS
-from .base import BaseModerationCog, validate_amount
+from utils.error_handler import validate_number_range, ValidationError
+from .base import BaseModerationCog, require_guild_permissions
 
 
 class SoftbanCommand(BaseModerationCog):
@@ -26,6 +28,7 @@ class SoftbanCommand(BaseModerationCog):
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(ban_members=True)
+    @require_guild_permissions(ban_members=True)
     @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['ban'], key=lambda i: i.user.id)
     async def softban(
         self,
@@ -36,9 +39,6 @@ class SoftbanCommand(BaseModerationCog):
     ):
         """Softban member"""
         try:
-            if not await self.validate_permissions(interaction, 'ban_members'):
-                return
-
             is_valid, error_msg = await self.validate_target(interaction, member)
             if not is_valid:
                 await self.send_error(interaction, error_msg or "Invalid target")
@@ -49,10 +49,7 @@ class SoftbanCommand(BaseModerationCog):
                 await self.send_error(interaction, error_msg or "Hierarchy check failed")
                 return
 
-            is_valid, error_msg = validate_amount(delete_messages, 1, 7)
-            if not is_valid:
-                await self.send_error(interaction, error_msg or "Invalid amount")
-                return
+            validate_number_range(delete_messages, 1, 7, "Số ngày xóa tin nhắn")
             delete_messages = max(1, min(7, delete_messages))
 
             view = ConfirmView(interaction.user)
@@ -82,7 +79,6 @@ class SoftbanCommand(BaseModerationCog):
                 await self.safe_error_response(interaction, "Lỗi", "Không xác định được guild!")
                 return
 
-            # Ban để xóa tin nhắn, rồi unban ngay
             await guild.ban(
                 member,
                 reason=f"Softban bởi {interaction.user}: {reason}",
@@ -113,6 +109,12 @@ class SoftbanCommand(BaseModerationCog):
                 ),
                 view=None
             )
+        except ValidationError as e:
+            await self.send_error(interaction, e.user_message)
         except Exception as e:
             self.logger.error(f"Error in softban command: {e}", exc_info=True)
             await self.safe_error_response(interaction, "Lỗi", f"Không thể softban: {str(e)}")
+
+
+async def setup(bot):
+    await bot.add_cog(SoftbanCommand(bot))

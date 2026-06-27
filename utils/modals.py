@@ -2,6 +2,7 @@
 
 import discord
 import logging
+from typing import Optional
 
 logger = logging.getLogger('BlastBot.Modals')
 
@@ -25,25 +26,48 @@ class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn")
         style=discord.TextStyle.paragraph
     )
     
-    def __init__(self, target_id: int, target_type: str = "user", **kwargs):
+    def __init__(
+        self,
+        target_id: int,
+        target_type: str = "user",
+        message_context: Optional[dict] = None,
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self.target_id = target_id
         self.target_type = target_type  # "user" or "message"
+        self.message_context = message_context or {}
     
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Xử lý khi submit report"""
         from utils.embeds import success_embed, create_embed
         from utils.constants import COLORS
     
+        description_lines = [
+            f"**Người báo cáo:** {interaction.user.mention} (`{interaction.user.id}`)",
+            f"**Target ID:** `{self.target_id}`"
+        ]
+
+        if self.message_context:
+            author_id = self.message_context.get('author')
+            jump_url = self.message_context.get('jump_url')
+            if author_id:
+                description_lines.append(f"**Tác giả tin nhắn:** <@{author_id}> (`{author_id}`)")
+            if jump_url:
+                description_lines.append(f"**Link tin nhắn:** [Đi đến tin nhắn]({jump_url})")
+
         # Tạo report embed
         report_embed = create_embed(
             title=f"📢 Báo cáo mới - {self.target_type.title()}",
-            description=f"**Người báo cáo:** {interaction.user.mention}\n"
-                        f"**Target ID:** {self.target_id}",
+            description="\n".join(description_lines),
             color=COLORS['warning']
         )
         report_embed.add_field(name="Lý do", value=self.reason.value, inline=False)
         report_embed.add_field(name="Chi tiết", value=self.details.value, inline=False)
+        
+        if self.message_context and self.message_context.get('content'):
+            report_embed.add_field(name="Nội dung tin nhắn", value=self.message_context['content'], inline=False)
+
         report_embed.set_footer(text=f"Report ID: {interaction.id}")
     
         # Gửi vào log channel nếu có (dùng connection dùng chung của bot)
@@ -70,7 +94,6 @@ class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn")
         )
     
         logger.info(f"Report submitted by {interaction.user} for {self.target_type} {self.target_id}")
-
 
 
 class SuggestionModal(discord.ui.Modal, title="Gửi góp ý"):

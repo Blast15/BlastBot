@@ -3,19 +3,27 @@ from discord.ext import commands
 import asyncio
 from dotenv import load_dotenv
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from utils.database import Database
 
 from utils.config import Config
 
 load_dotenv()
 
-# Setup logging
+# Setup logging với RotatingFileHandler (max 5MB x 5 backups)
+rotating_handler = RotatingFileHandler('bot.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+rotating_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
+        rotating_handler,
         logging.StreamHandler()
     ]
 )
@@ -23,7 +31,10 @@ logger = logging.getLogger('BlastBot')
 
 
 class BlastBot(commands.Bot):
-    """Main bot class với custom initialization"""
+    """Main bot class với custom initialization và explicit typing."""
+    
+    db: Optional['Database']
+    start_time: Optional[datetime]
     
     def __init__(self):
         intents = discord.Intents.default()
@@ -35,16 +46,11 @@ class BlastBot(commands.Bot):
         super().__init__(
             command_prefix=Config.DEFAULT_PREFIX,
             intents=intents,
-            help_command=None  # Disable default help command
+            help_command=None
         )
         
-        # Auto-discover extensions from cogs folder
         self.initial_extensions = self._discover_extensions()
-        
-        # Thời gian khởi động bot
         self.start_time = None
-        
-        # Shared database connection
         self.db = None
         self._persistent_views_registered = False
     
@@ -56,10 +62,8 @@ class BlastBot(commands.Bot):
         self.db = Database()
         await self.db.connect()
         
-        # Set up tree error handler
         self.tree.on_error = self.on_app_command_error
         
-        # Load all cogs
         for ext in self.initial_extensions:
             try:
                 await self.load_extension(ext)
@@ -67,23 +71,12 @@ class BlastBot(commands.Bot):
             except Exception as e:
                 logger.error(f"❌ Không thể tải {ext}: {e}")
 
-        # Sync commands (global hoặc guild-specific cho testing)
-        guild_id = Config.GUILD_ID
-        if guild_id and guild_id.strip():
-            try:
-                gid = int(guild_id.strip())
-            except ValueError:
-                logger.error(f"GUILD_ID không hợp lệ ('{guild_id}'), sẽ sync global.")
-                gid = None
-
-            if gid:
-                guild = discord.Object(id=gid)
-                self.tree.copy_global_to(guild=guild)
-                synced = await self.tree.sync(guild=guild)
-                logger.info(f"Đã sync {len(synced)} commands cho guild {gid}")
-            else:
-                synced = await self.tree.sync()
-                logger.info(f"Đã sync {len(synced)} commands globally")
+        gid = Config.get_guild_id_int()
+        if gid:
+            guild = discord.Object(id=gid)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            logger.info(f"Đã sync {len(synced)} commands cho guild {gid}")
         else:
             synced = await self.tree.sync()
             logger.info(f"Đã sync {len(synced)} commands globally")
@@ -107,7 +100,6 @@ class BlastBot(commands.Bot):
         return modules
 
     def _discover_extensions(self) -> list[str]:
-        """Tự động tìm và load tất cả extension modules."""
         extensions = []
         base_path = Path(__file__).parent
 
@@ -130,20 +122,16 @@ class BlastBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Không thể đăng ký persistent views: {e}", exc_info=True)
 
-    
     async def on_ready(self):
-        """Called when bot is ready"""
         if self.user:
             logger.info(f"🚀 Bot đã sẵn sàng! Đăng nhập với tên: {self.user.name}")
         logger.info(f"📊 Đang hoạt động trên {len(self.guilds)} servers")
         
-        # Lưu thời gian khởi động
         self.start_time = datetime.now(timezone.utc)
         logger.info(f"⏰ Bot khởi động lúc: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         await self._register_persistent_views()
         
-        # Set bot status
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -152,7 +140,6 @@ class BlastBot(commands.Bot):
         )
     
     async def close(self):
-        """Graceful shutdown"""
         logger.info("🛑 Đang tắt bot...")
 
         if getattr(self, 'db', None):
@@ -162,7 +149,6 @@ class BlastBot(commands.Bot):
             except Exception as e:
                 logger.error(f"❌ Lỗi khi đóng database: {e}", exc_info=True)
         
-        # Call parent close
         await super().close()
         logger.info("✅ Bot đã tắt hoàn toàn")
     
@@ -171,14 +157,11 @@ class BlastBot(commands.Bot):
         interaction: discord.Interaction,
         error: discord.app_commands.AppCommandError
     ):
-        """Global error handler for slash commands"""
         from utils.error_handler import handle_command_error
         
-        # Handle CommandNotFound separately (cache issue)
         if isinstance(error, discord.app_commands.CommandNotFound):
             logger.warning(
-                f"Command '{error.name}' không tồn tại nhưng vẫn được gọi bởi {interaction.user}. "
-                f"Discord đang cache command cũ. Đã tự động clear trong lần sync tiếp theo."
+                f"Command '{error.name}' không tồn tại nhưng vẫn được gọi bởi {interaction.user}."
             )
             try:
                 await interaction.response.send_message(
@@ -189,29 +172,21 @@ class BlastBot(commands.Bot):
                 pass
             return
         
-        # Unwrap the error if it's wrapped
         original_error = getattr(error, 'original', error)
-        
         await handle_command_error(interaction, original_error)
     
+
 async def main():
-    """Main entry point"""
-    # Check for token
     token = Config.TOKEN
     if not token:
         logger.error("❌ Không tìm thấy DISCORD_TOKEN trong file .env!")
-        logger.error("Vui lòng tạo file .env và thêm token của bạn.")
         return
     
-    # Validate token format (basic check)
     from utils.constants import BOT_CONFIG
-    
     if not token.strip() or len(token) < BOT_CONFIG['min_token_length']:
-        logger.error(f"❌ DISCORD_TOKEN không hợp lệ! Token phải có ít nhất {BOT_CONFIG['min_token_length']} ký tự.")
-        logger.error("Vui lòng kiểm tra lại token trong file .env")
+        logger.error(f"❌ DISCORD_TOKEN không hợp lệ!")
         return
     
-    # Create data directory if not exists
     Path('data').mkdir(exist_ok=True)
 
     bot = BlastBot()

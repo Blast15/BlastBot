@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from utils.embeds import success_embed
 from utils.constants import COMMAND_COOLDOWNS
-from .base import BaseModerationCog, validate_duration
+from utils.error_handler import validate_number_range, ValidationError
+from .base import BaseModerationCog, require_guild_permissions
 
 
 class TempRoleCommand(BaseModerationCog):
@@ -32,6 +33,7 @@ class TempRoleCommand(BaseModerationCog):
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_roles=True)
+    @require_guild_permissions(manage_roles=True)
     @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['timeout'], key=lambda i: i.user.id)
     async def temprole(
         self,
@@ -43,19 +45,13 @@ class TempRoleCommand(BaseModerationCog):
     ):
         """Gán role tạm thời"""
         try:
-            if not await self.validate_permissions(interaction, 'manage_roles'):
-                return
-
             guild = interaction.guild
             if guild is None or not isinstance(interaction.user, discord.Member):
                 await self.send_error(interaction, "Không xác định được guild/member!")
                 return
 
-            # Validate duration: 1 phút - 28 ngày
-            is_valid, _ = validate_duration(duration, 1, 40320)
-            if not is_valid:
-                await self.send_error(interaction, "Thời gian phải từ 1 phút đến 28 ngày (40320 phút)!")
-                return
+            # Validate duration: 1 phút - 28 ngày (40320 phút)
+            validate_number_range(duration, 1, 40320, "Thời gian (phút)")
 
             # Kiểm tra hierarchy của role với người dùng
             if role >= interaction.user.top_role and interaction.user.id != guild.owner_id:
@@ -101,6 +97,8 @@ class TempRoleCommand(BaseModerationCog):
                 ),
                 ephemeral=True
             )
+        except ValidationError as e:
+            await self.send_error(interaction, e.user_message)
         except discord.Forbidden:
             await self.safe_error_response(interaction, "Lỗi", "Bot không có quyền quản lý role này!")
         except Exception as e:
@@ -125,17 +123,30 @@ class TempRoleCommand(BaseModerationCog):
                 member = guild.get_member(entry['user_id'])
                 role = guild.get_role(entry['role_id'])
 
-                if member and role and role in member.roles:
+                if not role or member is None:
+                    await db.remove_temp_role(entry['guild_id'], entry['user_id'], entry['role_id'])
+                    continue
+
+                if role in member.roles:
                     try:
                         await member.remove_roles(role, reason="Temprole hết hạn")
                         self.logger.info(f"Đã gỡ temp role {role} khỏi {member}")
+                        await db.remove_temp_role(entry['guild_id'], entry['user_id'], entry['role_id'])
+                    except discord.Forbidden as e:
+                        self.logger.error(
+                            f"Bot không đủ quyền gỡ temp role {role.name} khỏi {member} (role cao hơn bot hoặc thiếu permission): {e}"
+                        )
                     except discord.HTTPException as e:
-                        self.logger.warning(f"Không thể gỡ temp role: {e}")
-
-                await db.remove_temp_role(entry['guild_id'], entry['user_id'], entry['role_id'])
+                        self.logger.warning(f"Lỗi HTTP tạm thời khi gỡ temp role {role.name} khỏi {member}: {e}")
+                else:
+                    await db.remove_temp_role(entry['guild_id'], entry['user_id'], entry['role_id'])
         except Exception as e:
             self.logger.error(f"Lỗi khi quét temp roles: {e}", exc_info=True)
 
     @check_expired_roles.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
+
+
+async def setup(bot):
+    await bot.add_cog(TempRoleCommand(bot))

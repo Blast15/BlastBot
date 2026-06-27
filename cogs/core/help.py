@@ -20,27 +20,16 @@ class HelpCommand(commands.Cog):
         """Tự động phân loại commands theo cog/module."""
         categories = {}
         
-        # Get all app commands from tree
         for command in self.bot.tree.walk_commands():
             if isinstance(command, app_commands.Command):
-                # Lấy category từ cog hoặc module name
-                cog_name = command.binding.__class__.__name__ if command.binding else "Other"
-                
-                # Parse module path để lấy category name
-                if hasattr(command.binding, '__module__'):
-                    module_parts = command.binding.__module__.split('.')
+                binding = getattr(command, 'binding', None)
+                category = "Other"
+                if binding and hasattr(binding, '__module__'):
+                    module_parts = binding.__module__.split('.')
                     if len(module_parts) >= 2:
-                        # cogs.moderation.kick -> Moderation
                         category = module_parts[1].title()
-                    else:
-                        category = "Other"
-                else:
-                    category = "Other"
                 
-                if category not in categories:
-                    categories[category] = []
-                
-                categories[category].append(command)
+                categories.setdefault(category, []).append(command)
         
         return categories
     
@@ -79,12 +68,10 @@ class HelpCommand(commands.Cog):
     ):
         """Dynamic help command"""
         try:
-            # Nếu có command cụ thể
             if command:
                 await self._show_command_help(interaction, command)
                 return
             
-            # Hiển thị tất cả commands
             categories = self._get_command_categories()
             
             if not categories:
@@ -94,7 +81,6 @@ class HelpCommand(commands.Cog):
                 )
                 return
             
-            # Tạo embed
             embed = create_embed(
                 title=f"{EMOJIS.get('bot', '🤖')} Danh sách Commands",
                 description=f"Bot hiện có **{sum(len(cmds) for cmds in categories.values())} commands** trong **{len(categories)} categories**\n\n"
@@ -102,34 +88,30 @@ class HelpCommand(commands.Cog):
                 color=COLORS['primary']
             )
             
-            # Thêm từng category
             for category, cmds in sorted(categories.items()):
                 emoji = self._get_category_emoji(category)
                 desc = self._get_category_description(category)
                 
                 command_list = []
                 for cmd in sorted(cmds, key=lambda x: x.name):
-                    # Format: /command - description
-                    cmd_desc = cmd.description or "No description"
+                    cmd_desc = getattr(cmd, 'description', None) or "No description"
                     command_list.append(f"`/{cmd.name}` - {cmd_desc}")
                 
                 if command_list:
                     embed.add_field(
                         name=f"{emoji} {category} ({len(cmds)})",
-                        value=f"*{desc}*\n" + "\n".join(command_list[:5]),  # Limit 5 per field
+                        value=f"*{desc}*\n" + "\n".join(command_list[:5]),
                         inline=False
                     )
                     
-                    # Nếu có nhiều hơn 5, thêm field khác
                     if len(command_list) > 5:
                         for i in range(5, len(command_list), 5):
                             embed.add_field(
-                                name="⠀",  # Zero-width space
+                                name="⠀",
                                 value="\n".join(command_list[i:i+5]),
                                 inline=False
                             )
             
-            # Footer với thông tin
             total_cmds = sum(len(cmds) for cmds in categories.values())
             embed.set_footer(
                 text=f"Tổng cộng {total_cmds} commands • Sử dụng /help <command> để xem chi tiết"
@@ -147,7 +129,6 @@ class HelpCommand(commands.Cog):
     
     async def _show_command_help(self, interaction: discord.Interaction, command_name: str):
         """Hiển thị chi tiết một command"""
-        # Tìm command
         cmd = None
         for command in self.bot.tree.walk_commands():
             if isinstance(command, app_commands.Command) and command.name == command_name:
@@ -164,20 +145,20 @@ class HelpCommand(commands.Cog):
             )
             return
         
-        # Tạo embed chi tiết
         embed = create_embed(
             title=f"📖 Command: /{cmd.name}",
-            description=cmd.description or "Không có mô tả",
+            description=getattr(cmd, 'description', None) or "Không có mô tả",
             color=COLORS['info']
         )
         
-        # Parameters
-        if cmd.parameters:
+        parameters = getattr(cmd, 'parameters', [])
+        if parameters:
             params_text = []
-            for param in cmd.parameters:
-                required = "**Required**" if param.required else "*Optional*"
-                param_desc = param.description or "No description"
-                params_text.append(f"• `{param.name}` ({required}): {param_desc}")
+            for param in parameters:
+                required = "**Required**" if getattr(param, 'required', False) else "*Optional*"
+                param_desc = getattr(param, 'description', None) or "No description"
+                param_name = getattr(param, 'name', 'param')
+                params_text.append(f"• `{param_name}` ({required}): {param_desc}")
             
             embed.add_field(
                 name="⚙️ Parameters",
@@ -191,8 +172,7 @@ class HelpCommand(commands.Cog):
                 inline=False
             )
         
-        # Usage example
-        param_names = " ".join([f"<{p.name}>" if p.required else f"[{p.name}]" for p in cmd.parameters])
+        param_names = " ".join([f"<{getattr(p, 'name', 'p')}>" if getattr(p, 'required', False) else f"[{getattr(p, 'name', 'p')}]" for p in parameters])
         usage = f"`/{cmd.name} {param_names.strip()}`" if param_names else f"`/{cmd.name}`"
         
         embed.add_field(
@@ -201,25 +181,29 @@ class HelpCommand(commands.Cog):
             inline=False
         )
         
-        # Permissions
         default_perms = getattr(cmd, 'default_permissions', None)
         if default_perms:
-            perms = [
-                name.replace('_', ' ').title()
-                for name, value in default_perms
-                if value
-            ]
-            
-            if perms:
-                embed.add_field(
-                    name="🔐 Permissions Required",
-                    value=", ".join(perms),
-                    inline=False
-                )
+            try:
+                perms = [
+                    name.replace('_', ' ').title()
+                    for name, value in default_perms
+                    if value
+                ]
+                if perms:
+                    embed.add_field(
+                        name="🔐 Permissions Required",
+                        value=", ".join(perms),
+                        inline=False
+                    )
+            except Exception:
+                pass
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
         self.logger.info(f"{interaction.user} đã xem help cho command {command_name}")
     
     async def cog_unload(self):
-        """Cleanup khi cog unload"""
         return
+
+
+async def setup(bot):
+    await bot.add_cog(HelpCommand(bot))

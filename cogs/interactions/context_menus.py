@@ -4,8 +4,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
-import asyncio
-from datetime import datetime, timedelta, timezone
 from utils.embeds import user_info_embed, create_embed, success_embed
 from utils.constants import COLORS
 from utils.modals import ReportModal
@@ -19,8 +17,6 @@ class ContextMenus(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger('BlastBot.ContextMenus')
-        self._temp_report_messages: dict[int, dict] = {}  # Local cache instead of bot attribute
-        self._cleanup_task = None
         
         # Register context menus
         self.user_info_menu = app_commands.ContextMenu(
@@ -52,9 +48,6 @@ class ContextMenus(commands.Cog):
             callback=self.bookmark_message_context
         )
         self.bot.tree.add_command(self.bookmark_message_menu)
-        
-        # Start cleanup task
-        self._cleanup_task = self.bot.loop.create_task(self._cleanup_temp_messages())
     
     async def cog_unload(self):
         """Cleanup khi unload cog"""
@@ -63,45 +56,11 @@ class ContextMenus(commands.Cog):
         self.bot.tree.remove_command(self.get_avatar_menu.name, type=self.get_avatar_menu.type)
         self.bot.tree.remove_command(self.report_message_menu.name, type=self.report_message_menu.type)
         self.bot.tree.remove_command(self.bookmark_message_menu.name, type=self.bookmark_message_menu.type)
-        
-        # Cancel cleanup task
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-        
-        # Clear temp data
-        self._temp_report_messages.clear()
-    
-    async def _cleanup_temp_messages(self):
-        """Background task to cleanup old temp message data"""
-        while True:
-            try:
-                await asyncio.sleep(3600)  # Run every hour
-                
-                # Remove entries older than 1 hour
-                current_time = datetime.now(timezone.utc)
-                to_remove = []
-                
-                for msg_id, data in self._temp_report_messages.items():
-                    timestamp = data.get('timestamp', current_time)
-                    if current_time - timestamp > timedelta(hours=1):
-                        to_remove.append(msg_id)
-                
-                for msg_id in to_remove:
-                    del self._temp_report_messages[msg_id]
-                
-                if to_remove:
-                    self.logger.debug(f"Cleaned up {len(to_remove)} old temp message entries")
-                    
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Error in cleanup task: {e}", exc_info=True)
     
     async def user_info_context(self, interaction: discord.Interaction, user: discord.User):
         """Context menu: Xem thông tin user"""
         target = user
         
-        # Nếu trong guild, lấy member object
         if interaction.guild:
             try:
                 target = await interaction.guild.fetch_member(user.id)
@@ -130,7 +89,6 @@ class ContextMenus(commands.Cog):
             )
             return
         
-        # Mở modal để nhập lý do
         modal = ReportModal(target_id=user.id, target_type="user")
         await interaction.response.send_modal(modal)
         self.logger.info(f"{interaction.user} reporting user {user}")
@@ -143,7 +101,6 @@ class ContextMenus(commands.Cog):
         )
         embed.set_image(url=user.display_avatar.url)
         
-        # Thêm button download
         view = discord.ui.View()
         view.add_item(
             discord.ui.Button(
@@ -171,24 +128,19 @@ class ContextMenus(commands.Cog):
             )
             return
         
-        # Mở modal với context về message
-        modal = ReportModal(target_id=message.id, target_type="message")
-        
-        # Store message info để reference sau (with timestamp for cleanup)
-        self._temp_report_messages[message.id] = {
+        message_context = {
             'author': message.author.id,
             'channel': message.channel.id,
             'jump_url': message.jump_url,
-            'content': message.content[:100],  # First 100 chars
-            'timestamp': datetime.now(timezone.utc)
+            'content': message.content[:200] if message.content else "*Không có văn bản*"
         }
         
+        modal = ReportModal(target_id=message.id, target_type="message", message_context=message_context)
         await interaction.response.send_modal(modal)
         self.logger.info(f"{interaction.user} reporting message {message.id} from {message.author}")
     
     async def bookmark_message_context(self, interaction: discord.Interaction, message: discord.Message):
         """Context menu: Bookmark message để xem sau"""
-        # Get channel info safely
         if isinstance(message.channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             channel_info = message.channel.mention
         else:
@@ -202,7 +154,6 @@ class ContextMenus(commands.Cog):
             color=COLORS['info']
         )
         
-        # Thêm jump link button
         view = discord.ui.View()
         view.add_item(
             discord.ui.Button(
@@ -212,7 +163,6 @@ class ContextMenus(commands.Cog):
             )
         )
         
-        # Gửi bookmark qua DM
         try:
             await interaction.user.send(embed=embed, view=view)
             await interaction.response.send_message(
@@ -228,3 +178,7 @@ class ContextMenus(commands.Cog):
                 "❌ Không thể gửi DM cho bạn! Vui lòng bật DM từ server members.",
                 ephemeral=True
             )
+
+
+async def setup(bot):
+    await bot.add_cog(ContextMenus(bot))

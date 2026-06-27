@@ -1,11 +1,26 @@
 """Base classes và utilities cho moderation commands"""
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from typing import Optional, Tuple
 import logging
+import aiosqlite
 from utils.embeds import error_embed
 from utils.constants import MESSAGES
+from utils.error_handler import validate_number_range, ValidationError
+
+
+def require_guild_permissions(**perms):
+    """Decorator check permissions của user trước khi callback chạy."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not isinstance(interaction.user, discord.Member):
+            raise app_commands.CheckFailure("Không thể xác định được member!")
+        missing = [p for p, val in perms.items() if val and not getattr(interaction.user.guild_permissions, p, False)]
+        if missing:
+            raise app_commands.MissingPermissions(missing)
+        return True
+    return app_commands.check(predicate)
 
 
 class BaseModerationCog(commands.Cog):
@@ -15,54 +30,13 @@ class BaseModerationCog(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger(f'BlastBot.Moderation.{self.__class__.__name__}')
     
-    async def validate_permissions(
-        self,
-        interaction: discord.Interaction,
-        required_permission: str
-    ) -> bool:
-        """
-        Validate user có permission cần thiết
-        
-        Args:
-            interaction: Discord interaction
-            required_permission: Tên permission cần check (e.g., 'kick_members')
-        
-        Returns:
-            bool: True nếu có permission, False nếu không
-        """
-        async def _send(embed):
-            if interaction.response.is_done():
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        if not isinstance(interaction.user, discord.Member):
-            await _send(error_embed("Lỗi", "Không thể xác định member!"))
-            return False
-        
-        if not getattr(interaction.user.guild_permissions, required_permission, False):
-            await _send(error_embed("Lỗi", MESSAGES['errors']['missing_permissions']))
-            return False
-        
-        return True
-    
     async def validate_hierarchy(
         self,
         interaction: discord.Interaction,
         target: discord.Member,
         action: str = "thực hiện hành động này"
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Validate hierarchy cho moderation actions
-        
-        Args:
-            interaction: Discord interaction
-            target: Target member
-            action: Tên hành động (for error message)
-        
-        Returns:
-            Tuple[bool, Optional[str]]: (is_valid, error_message)
-        """
+        """Validate hierarchy cho moderation actions"""
         if not isinstance(interaction.user, discord.Member):
             return False, "Không thể xác định moderator!"
         
@@ -89,25 +63,13 @@ class BaseModerationCog(commands.Cog):
         interaction: discord.Interaction,
         target: discord.Member
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Validate target member (không phải bản thân, không phải bot, etc.)
-        
-        Args:
-            interaction: Discord interaction
-            target: Target member
-        
-        Returns:
-            Tuple[bool, Optional[str]]: (is_valid, error_message)
-        """
-        # Không thể target chính mình
+        """Validate target member"""
         if target.id == interaction.user.id:
             return False, "Bạn không thể thực hiện hành động này với chính mình!"
         
-        # Không thể target bot
         if target.bot:
             return False, "Không thể thực hiện hành động này với bot!"
         
-        # Không thể target server owner
         if interaction.guild and target.id == interaction.guild.owner_id:
             return False, "Không thể thực hiện hành động này với server owner!"
         
@@ -119,14 +81,7 @@ class BaseModerationCog(commands.Cog):
         message: str,
         use_followup: bool = False
     ):
-        """
-        Send error message (handle both response and followup)
-        
-        Args:
-            interaction: Discord interaction
-            message: Error message
-            use_followup: Dùng followup thay vì response
-        """
+        """Send error message"""
         embed = error_embed("Lỗi", message)
         
         if use_followup or interaction.response.is_done():
@@ -140,9 +95,7 @@ class BaseModerationCog(commands.Cog):
         title: str,
         description: str
     ):
-        """
-        Gửi lỗi an toàn dù interaction đã defer hay chưa.
-        """
+        """Gửi lỗi an toàn dù interaction đã defer hay chưa."""
         embed = error_embed(title, description)
         try:
             if interaction.response.is_done():
@@ -172,24 +125,15 @@ class BaseModerationCog(commands.Cog):
         extra_info: Optional[str] = None,
         **extra
     ):
-        """
-        Log moderation action vào log channel nếu có
-        
-        Args:
-            guild: Guild where action occurred
-            moderator: Moderator who performed action
-            action: Action type (kick, ban, timeout, etc.)
-            target: Target member
-            reason: Reason for action
-            extra_info: Extra info to log (optional)
-        """
+        """Log moderation action vào log channel"""
         from utils.embeds import create_embed
         from utils.constants import COLORS
         
         try:
             db = getattr(self.bot, 'db', None)
             if db is None:
-                self.bot.logger.warning("log_moderation_action gọi khi DB chưa sẵn sàng")
+                if hasattr(self.bot, 'logger'):
+                    self.bot.logger.warning("log_moderation_action gọi khi DB chưa sẵn sàng")
                 return
 
             target_id = target.id if target is not None else 0
@@ -214,7 +158,6 @@ class BaseModerationCog(commands.Cog):
             if not log_channel or not isinstance(log_channel, (discord.TextChannel, discord.Thread)):
                 return
             
-            # Tạo log embed
             embed = create_embed(
                 title=f"🛡️ Moderation Action: {action.title()}",
                 description=f"**Moderator:** {moderator.mention} (`{moderator.id}`)\n"
@@ -228,48 +171,26 @@ class BaseModerationCog(commands.Cog):
             if extra_info:
                 embed.add_field(name="Extra Info", value=extra_info, inline=False)
             
-            embed.set_footer(text=f"Action performed at")
+            embed.set_footer(text="Action performed at")
             embed.timestamp = discord.utils.utcnow()
             
             await log_channel.send(embed=embed)
             
-        except Exception as e:
+        except (aiosqlite.Error, discord.HTTPException) as e:
             self.logger.error(f"Failed to log moderation action: {e}", exc_info=True)
 
 
-# Shared validation functions (can be used outside of class)
-
 def validate_duration(duration: int, min_val: int, max_val: int) -> Tuple[bool, Optional[str]]:
-    """
-    Validate duration value
-    
-    Args:
-        duration: Duration value
-        min_val: Minimum allowed value
-        max_val: Maximum allowed value
-    
-    Returns:
-        Tuple[bool, Optional[str]]: (is_valid, error_message)
-    """
-    if duration < min_val or duration > max_val:
-        return False, f"Giá trị phải từ {min_val} đến {max_val}!"
-    
-    return True, None
+    try:
+        validate_number_range(duration, min_val, max_val, "Thời gian")
+        return True, None
+    except ValidationError as e:
+        return False, e.user_message
 
 
 def validate_amount(amount: int, min_val: int = 1, max_val: int = 100) -> Tuple[bool, Optional[str]]:
-    """
-    Validate amount value (for clear command, etc.)
-    
-    Args:
-        amount: Amount value
-        min_val: Minimum allowed value
-        max_val: Maximum allowed value
-    
-    Returns:
-        Tuple[bool, Optional[str]]: (is_valid, error_message)
-    """
-    if amount < min_val or amount > max_val:
-        return False, f"Số lượng phải từ {min_val} đến {max_val}!"
-    
-    return True, None
+    try:
+        validate_number_range(amount, min_val, max_val, "Số lượng")
+        return True, None
+    except ValidationError as e:
+        return False, e.user_message

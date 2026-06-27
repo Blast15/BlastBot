@@ -7,7 +7,8 @@ import logging
 from utils.embeds import success_embed, error_embed, warning_embed
 from utils.views import ConfirmView
 from utils.constants import COMMAND_COOLDOWNS
-from .base import BaseModerationCog, validate_amount
+from utils.error_handler import validate_number_range, ValidationError
+from .base import BaseModerationCog, require_guild_permissions
 
 
 BAN_REASONS = [
@@ -50,6 +51,7 @@ class BanCommand(BaseModerationCog):
     @app_commands.autocomplete(reason=ban_reason_autocomplete)
     @app_commands.guild_only()
     @app_commands.default_permissions(ban_members=True)
+    @require_guild_permissions(ban_members=True)
     @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['ban'], key=lambda i: i.user.id)
     async def ban(
         self,
@@ -60,10 +62,6 @@ class BanCommand(BaseModerationCog):
     ):
         """Ban member khỏi server"""
         try:
-            # Validate permissions
-            if not await self.validate_permissions(interaction, 'ban_members'):
-                return
-            
             # Validate target
             is_valid, error_msg = await self.validate_target(interaction, member)
             if not is_valid:
@@ -77,10 +75,7 @@ class BanCommand(BaseModerationCog):
                 return
             
             # Validate delete_messages
-            is_valid, error_msg = validate_amount(delete_messages, 0, 7)
-            if not is_valid:
-                await self.send_error(interaction, error_msg or "Invalid amount")
-                return
+            validate_number_range(delete_messages, 0, 7, "Số ngày xóa tin nhắn")
             delete_messages = max(0, min(7, delete_messages))
             
             # Xác nhận
@@ -131,6 +126,12 @@ class BanCommand(BaseModerationCog):
                 ),
                 view=None
             )
+        except ValidationError as e:
+            await self.send_error(interaction, e.user_message)
         except Exception as e:
             self.logger.error(f"Error in ban command: {e}", exc_info=True)
             await self.safe_error_response(interaction, "Lỗi", f"Không thể ban: {str(e)}")
+
+
+async def setup(bot):
+    await bot.add_cog(BanCommand(bot))
