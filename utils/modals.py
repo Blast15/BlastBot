@@ -30,45 +30,36 @@ class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn")
         self.target_id = target_id
         self.target_type = target_type  # "user" or "message"
     
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         """Xử lý khi submit report"""
         from utils.embeds import success_embed, create_embed
         from utils.constants import COLORS
-        
+    
         # Tạo report embed
         report_embed = create_embed(
             title=f"📢 Báo cáo mới - {self.target_type.title()}",
             description=f"**Người báo cáo:** {interaction.user.mention}\n"
-                       f"**Target ID:** {self.target_id}",
+                        f"**Target ID:** {self.target_id}",
             color=COLORS['warning']
         )
         report_embed.add_field(name="Lý do", value=self.reason.value, inline=False)
         report_embed.add_field(name="Chi tiết", value=self.details.value, inline=False)
         report_embed.set_footer(text=f"Report ID: {interaction.id}")
-        
-        # Gửi vào log channel nếu có
+    
+        # Gửi vào log channel nếu có (dùng connection dùng chung của bot)
         if interaction.guild:
-            try:
-                from utils.database import Database
-                db = getattr(interaction.client, 'db', None)
-                created_local_db = False
-                if db is None:
-                    db = Database()
-                    await db.connect()
-                    created_local_db = True
-
-                config = await db.get_guild_config(interaction.guild.id)
-                
-                if config.get('log_channel_id'):
-                    log_channel = interaction.guild.get_channel(config['log_channel_id'])
-                    if log_channel and isinstance(log_channel, (discord.TextChannel, discord.Thread)):
-                        await log_channel.send(embed=report_embed)
-            except Exception as e:
-                logger.error(f"Failed to send report to log channel: {e}")
-            finally:
-                if 'created_local_db' in locals() and created_local_db:
-                    await db.close()
-        
+            db = getattr(interaction.client, "db", None)
+            if db is not None:
+                try:
+                    config = await db.get_guild_config(interaction.guild.id)
+                    log_channel_id = config.get("log_channel_id")
+                    if log_channel_id:
+                        log_channel = interaction.guild.get_channel(log_channel_id)
+                        if isinstance(log_channel, (discord.TextChannel, discord.Thread)):
+                            await log_channel.send(embed=report_embed)
+                except Exception as e:
+                    logger.error(f"Failed to send report to log channel: {e}")
+    
         # Xác nhận với user
         await interaction.response.send_message(
             embed=success_embed(
@@ -77,8 +68,9 @@ class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn")
             ),
             ephemeral=True
         )
-        
+    
         logger.info(f"Report submitted by {interaction.user} for {self.target_type} {self.target_id}")
+
 
 
 class SuggestionModal(discord.ui.Modal, title="Gửi góp ý"):
