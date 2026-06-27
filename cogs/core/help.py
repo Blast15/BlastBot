@@ -93,9 +93,9 @@ class HelpCommand(commands.Cog):
                 desc = self._get_category_description(category)
                 
                 command_list = []
-                for cmd in sorted(cmds, key=lambda x: x.name):
+                for cmd in sorted(cmds, key=lambda x: x.qualified_name):
                     cmd_desc = getattr(cmd, 'description', None) or "No description"
-                    command_list.append(f"`/{cmd.name}` - {cmd_desc}")
+                    command_list.append(f"`/{cmd.qualified_name}` - {cmd_desc}")
                 
                 if command_list:
                     embed.add_field(
@@ -131,7 +131,7 @@ class HelpCommand(commands.Cog):
         """Hiển thị chi tiết một command"""
         cmd = None
         for command in self.bot.tree.walk_commands():
-            if isinstance(command, app_commands.Command) and command.name == command_name:
+            if isinstance(command, app_commands.Command) and command.qualified_name == command_name:
                 cmd = command
                 break
         
@@ -146,7 +146,7 @@ class HelpCommand(commands.Cog):
             return
         
         embed = create_embed(
-            title=f"📖 Command: /{cmd.name}",
+            title=f"📖 Command: /{cmd.qualified_name}",
             description=getattr(cmd, 'description', None) or "Không có mô tả",
             color=COLORS['info']
         )
@@ -173,7 +173,7 @@ class HelpCommand(commands.Cog):
             )
         
         param_names = " ".join([f"<{getattr(p, 'name', 'p')}>" if getattr(p, 'required', False) else f"[{getattr(p, 'name', 'p')}]" for p in parameters])
-        usage = f"`/{cmd.name} {param_names.strip()}`" if param_names else f"`/{cmd.name}`"
+        usage = f"`/{cmd.qualified_name} {param_names.strip()}`" if param_names else f"`/{cmd.qualified_name}`"
         
         embed.add_field(
             name="💡 Cách dùng",

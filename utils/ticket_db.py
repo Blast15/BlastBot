@@ -213,7 +213,10 @@ class TicketDBMixin:
                 return []
             async with self.conn.execute(
                 "SELECT * FROM ticket_panels WHERE guild_id=?", (guild_id,)) as cur:
-                return [dict(r) for r in await cur.fetchall()]
+                rows = [dict(r) for r in await cur.fetchall()]
+            for d in rows:
+                d['mention_on_open'] = json.loads(d['mention_on_open'] or '[]')
+            return rows
 
     async def set_panel_message(self, panel_id: int, channel_id: int, message_id: int):
         async with self._lock:
