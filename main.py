@@ -148,7 +148,7 @@ class BlastBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
-                name="your server"
+                name="From Blast with love"
             )
         )
     
