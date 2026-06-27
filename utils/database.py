@@ -106,11 +106,11 @@ class Database:
         self._lock = asyncio.Lock()
     
     async def connect(self) -> None:
-    """Kết nối đến database và cấu hình PRAGMA.
+        """Kết nối đến database và cấu hình PRAGMA.
 
-    Bật WAL mode để cải thiện đồng thời đọc/ghi, và busy_timeout để
-    aiosqlite tự retry thay vì raise ngay khi DB tạm thời bị khóa.
-    """
+        Bật WAL mode để cải thiện đồng thời đọc/ghi, và busy_timeout để
+        aiosqlite tự retry thay vì raise ngay khi DB tạm thời bị khóa.
+        """
         try:
             self.conn = await aiosqlite.connect(self.db_path)
             self.conn.row_factory = aiosqlite.Row
