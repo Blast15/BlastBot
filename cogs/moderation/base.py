@@ -178,19 +178,3 @@ class BaseModerationCog(commands.Cog):
             
         except (aiosqlite.Error, discord.HTTPException) as e:
             self.logger.error(f"Failed to log moderation action: {e}", exc_info=True)
-
-
-def validate_duration(duration: int, min_val: int, max_val: int) -> Tuple[bool, Optional[str]]:
-    try:
-        validate_number_range(duration, min_val, max_val, "Thời gian")
-        return True, None
-    except ValidationError as e:
-        return False, e.user_message
-
-
-def validate_amount(amount: int, min_val: int = 1, max_val: int = 100) -> Tuple[bool, Optional[str]]:
-    try:
-        validate_number_range(amount, min_val, max_val, "Số lượng")
-        return True, None
-    except ValidationError as e:
-        return False, e.user_message

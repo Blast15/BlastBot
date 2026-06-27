@@ -6,6 +6,7 @@ from discord.ext import commands
 import logging
 from utils.embeds import success_embed, error_embed, info_embed, create_embed
 from utils.constants import COLORS, EMOJIS, COMMAND_COOLDOWNS
+from cogs.moderation.base import require_guild_permissions
 
 
 class RolesCommand(commands.Cog):
@@ -103,6 +104,7 @@ class RolesCommand(commands.Cog):
     @app_commands.describe(member="Member cần thêm role", role="Role cần thêm")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_roles=True)
+    @require_guild_permissions(manage_roles=True)
     @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def roleadd(
         self,
@@ -163,6 +165,7 @@ class RolesCommand(commands.Cog):
     @app_commands.describe(member="Member cần xóa role", role="Role cần xóa")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_roles=True)
+    @require_guild_permissions(manage_roles=True)
     @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def roleremove(
         self,

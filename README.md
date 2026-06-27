@@ -143,7 +143,7 @@ pytest                # chạy test
 
 Log ghi đồng thời ra **console** và file **`bot.log`** (UTF-8). Các mức: `INFO`, `WARNING`, `ERROR`, `DEBUG`.
 
-> Lưu ý: chưa bật log rotation.
+> Log được tự động xoay vòng với `RotatingFileHandler` (tối đa 5MB x 5 file backup).
 
 ## 🐛 Khắc phục sự cố
 

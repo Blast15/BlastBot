@@ -25,7 +25,11 @@ logger.propagate = False
 
 
 class AsyncRLock:
-    """Asyncio Reentrant Lock cho coroutines"""
+    """Asyncio Reentrant Lock cho coroutines.
+    
+    Lưu ý: Tính chất reentrant chỉ hoạt động trong cùng một asyncio Task (dựa trên asyncio.current_task()).
+    Không truyền lock reentrant qua các task con (e.g., tạo bằng asyncio.create_task hoặc asyncio.gather).
+    """
     def __init__(self):
         self._lock = asyncio.Lock()
         self._owner: Optional[asyncio.Task] = None
@@ -144,6 +148,7 @@ class Database:
         """Transaction context manager để gom nhóm nhiều thao tác DB atomic."""
         async with self._lock:
             if not self.conn:
+                logger.warning("Attempted transaction while database connection is closed or not established.")
                 yield
                 return
             was_in_tx = self._in_transaction

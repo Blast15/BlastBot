@@ -43,6 +43,34 @@ class DatabaseConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         warnings = await self.db.get_warnings(guild_id, user_id)
         self.assertEqual(warnings, 0)
 
+    async def test_nested_transactions(self):
+        guild_id = 777
+        user_id = 666
+
+        async with self.db.transaction():
+            await self.db.add_warning(guild_id, user_id)
+            async with self.db.transaction():
+                await self.db.add_warning(guild_id, user_id)
+
+        warnings = await self.db.get_warnings(guild_id, user_id)
+        self.assertEqual(warnings, 2)
+
+    async def test_nested_transaction_rollback(self):
+        guild_id = 555
+        user_id = 444
+
+        try:
+            async with self.db.transaction():
+                await self.db.add_warning(guild_id, user_id)
+                async with self.db.transaction():
+                    await self.db.add_warning(guild_id, user_id)
+                    raise RuntimeError("Inner transaction failed")
+        except RuntimeError:
+            pass
+
+        warnings = await self.db.get_warnings(guild_id, user_id)
+        self.assertEqual(warnings, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

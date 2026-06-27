@@ -34,6 +34,11 @@ class ClearCommand(BaseModerationCog):
     ):
         """Xóa tin nhắn"""
         try:
+            # Kiểm tra channel type trước
+            if not isinstance(interaction.channel, discord.TextChannel):
+                await self.send_error(interaction, "Lệnh này chỉ dùng trong text channel!")
+                return
+
             # Validate amount
             validate_number_range(
                 amount,
@@ -41,11 +46,6 @@ class ClearCommand(BaseModerationCog):
                 CLEAR_CONFIG['max_messages'],
                 "Số lượng tin nhắn"
             )
-            
-            # Kiểm tra channel type
-            if not isinstance(interaction.channel, discord.TextChannel):
-                await self.send_error(interaction, "Lệnh này chỉ dùng trong text channel!")
-                return
             
             await interaction.response.defer(ephemeral=True)
             
@@ -57,7 +57,7 @@ class ClearCommand(BaseModerationCog):
                 messages.append(message)
             
             if not messages:
-                await self.send_error(interaction, "Không tìm thấy tin nhắn để xóa!", use_followup=True)
+                await self.safe_error_response(interaction, "Lỗi", "Không tìm thấy tin nhắn để xóa!")
                 return
             
             # Phân loại tin nhắn theo độ tuổi
@@ -113,7 +113,7 @@ class ClearCommand(BaseModerationCog):
                 ephemeral=True
             )
         except ValidationError as e:
-            await self.send_error(interaction, e.user_message)
+            await self.safe_error_response(interaction, "Lỗi", e.user_message)
         except Exception as e:
             self.logger.error(f"Error in clear command: {e}", exc_info=True)
             await self.safe_error_response(interaction, "Lỗi", f"Không thể xóa tin nhắn: {str(e)}")
