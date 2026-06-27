@@ -71,6 +71,18 @@ class DatabaseConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         warnings = await self.db.get_warnings(guild_id, user_id)
         self.assertEqual(warnings, 0)
 
+    async def test_guild_config_cache(self):
+        guild_id = 123
+        config = await self.db.get_guild_config(guild_id)
+        self.assertEqual(config['guild_id'], guild_id)
+        
+        await self.db.update_guild_config(guild_id, log_channel_id=999)
+        updated = await self.db.get_guild_config(guild_id)
+        self.assertEqual(updated['log_channel_id'], 999)
+        
+        stats = self.db.get_cache_stats()
+        self.assertIn('total_entries', stats)
+
 
 if __name__ == "__main__":
     unittest.main()

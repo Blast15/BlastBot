@@ -104,3 +104,12 @@ VALIDATION_LIMITS = {
     'timeout_max_seconds': 2419200,  # 28 days
     'ban_delete_days_max': 7,
 }
+
+# Ticket configuration
+TICKET_CONFIG = {
+    'default_limit': 5,
+    'max_limit': 50,
+    'autoclose_check_minutes': 30,
+    'default_color': 0x5865F2,
+}
+

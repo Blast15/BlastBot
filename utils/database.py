@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from utils.config import Config
 from utils.constants import CACHE_CONFIG
 from utils.error_handler import DatabaseError
+from utils.ticket_db import TicketDBMixin
 
 
 logger = logging.getLogger('BlastBot.Database')
@@ -129,19 +130,18 @@ class LRUCache:
         }
 
 
-class Database:
+class Database(TicketDBMixin):
     """Wrapper cho aiosqlite database operations với caching và thread safety"""
 
-    _guild_config_cache = LRUCache(
-        maxsize=CACHE_CONFIG['guild_config_maxsize'],
-        ttl_seconds=CACHE_CONFIG['guild_config_ttl_seconds']
-    )
-    
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or Config.DB_PATH
         self.conn: aiosqlite.Connection | None = None
         self._lock = AsyncRLock()
         self._in_transaction = False
+        self._guild_config_cache = LRUCache(
+            maxsize=CACHE_CONFIG['guild_config_maxsize'],
+            ttl_seconds=CACHE_CONFIG['guild_config_ttl_seconds']
+        )
 
     @asynccontextmanager
     async def transaction(self):
@@ -277,6 +277,7 @@ class Database:
                 )
             """)
 
+            await self.init_ticket_tables()
             await self._commit_if_not_in_tx()
             logger.info("Database tables initialized")
         except aiosqlite.Error as e:
@@ -383,15 +384,6 @@ class Database:
             )
             await self._commit_if_not_in_tx()
 
-    async def _get_table_columns(self, table_name: str) -> list[dict]:
-        async with self._lock:
-            if not self.conn:
-                return []
-
-            async with self.conn.execute(f"PRAGMA table_info({table_name})") as cursor:
-                rows = await cursor.fetchall()
-                return [dict(row) for row in rows]
-    
     async def get_guild_config(self, guild_id: int) -> dict:
         async with self._lock:
             cached_config = self._guild_config_cache.get(guild_id)
@@ -458,18 +450,16 @@ class Database:
                     await self.conn.rollback()
                 raise DatabaseError(f"Failed to update guild config: {e}")
     
-    @classmethod
-    def invalidate_cache(cls, guild_id: Optional[int] = None):
+    def invalidate_cache(self, guild_id: Optional[int] = None):
         if guild_id is None:
-            cls._guild_config_cache.clear()
+            self._guild_config_cache.clear()
             logger.debug("Cleared all guild config cache")
         else:
-            cls._guild_config_cache.delete(guild_id)
+            self._guild_config_cache.delete(guild_id)
             logger.debug(f"Invalidated cache for guild {guild_id}")
     
-    @classmethod
-    def get_cache_stats(cls) -> dict:
-        return cls._guild_config_cache.get_stats()
+    def get_cache_stats(self) -> dict:
+        return self._guild_config_cache.get_stats()
     
     async def get_user_data(self, user_id: int, guild_id: int) -> dict:
         async with self._lock:

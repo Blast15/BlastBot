@@ -96,11 +96,9 @@ SQLite bất đồng bộ qua `aiosqlite`, chạy ở chế độ **WAL** với 
 Config của guild được cache với TTL 5 phút:
 
 ```python
-from utils.database import Database
-
-Database.invalidate_cache(guild_id)   # xóa cache một guild
-Database.invalidate_cache()           # xóa toàn bộ cache
-Database.get_cache_stats()            # thống kê cache
+bot.db.invalidate_cache(guild_id)   # xóa cache một guild
+bot.db.invalidate_cache()           # xóa toàn bộ cache
+bot.db.get_cache_stats()            # thống kê cache
 ```
 
 ## 🛠️ Phát triển

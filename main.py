@@ -115,7 +115,12 @@ class BlastBot(commands.Bot):
 
         try:
             from utils.modals import SuggestionVotingView
+            from cogs.tickets.views import TicketPanelView, TicketControlView, CloseRequestView
+
             self.add_view(SuggestionVotingView(self.db))
+            self.add_view(TicketPanelView(self))
+            self.add_view(TicketControlView(self))
+            self.add_view(CloseRequestView(self))
 
             self._persistent_views_registered = True
             logger.info("Đã đăng ký lại persistent views")
