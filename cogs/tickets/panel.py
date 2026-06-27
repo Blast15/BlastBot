@@ -84,6 +84,78 @@ class TicketPanel(commands.Cog):
             embed=create_embed(title="📌 Ticket Panels", description="\n".join(lines),
                                color=COLORS['info']), ephemeral=True)
 
+    @panel.command(name="edit", description="Sửa nội dung panel (tiêu đề, mô tả, nút)")
+    @app_commands.describe(
+        panel_id="ID panel cần sửa", title="Tiêu đề mới",
+        content="Mô tả mới", button_label="Chữ nút mới")
+    @require_guild_permissions(manage_guild=True)
+    async def panel_edit(self, interaction: discord.Interaction, panel_id: int,
+                         title: str | None = None, content: str | None = None,
+                         button_label: str | None = None):
+        if interaction.guild is None:
+            return
+        panel = await self.bot.db.get_panel(panel_id)
+        if not panel or panel['guild_id'] != interaction.guild.id:
+            return await interaction.response.send_message(
+                embed=error_embed("Lỗi", "Không tìm thấy panel."), ephemeral=True)
+
+        updated = await self.bot.db.update_panel(
+            panel_id, title=title, content=content, button_label=button_label)
+        if not updated:
+            return await interaction.response.send_message(
+                embed=error_embed("Lỗi", "Bạn chưa nhập trường nào để sửa."), ephemeral=True)
+
+        # Cập nhật message panel đang hiển thị (nếu còn)
+        await self._refresh_panel_message(interaction.guild, panel_id)
+        await interaction.response.send_message(
+            embed=success_embed("Đã sửa panel", f"Panel `{panel_id}` đã được cập nhật."),
+            ephemeral=True)
+
+    @panel.command(name="delete", description="Xóa panel (kèm message nếu còn)")
+    @app_commands.describe(panel_id="ID panel cần xóa")
+    @require_guild_permissions(manage_guild=True)
+    async def panel_delete(self, interaction: discord.Interaction, panel_id: int):
+        if interaction.guild is None:
+            return
+        panel = await self.bot.db.get_panel(panel_id)
+        if not panel or panel['guild_id'] != interaction.guild.id:
+            return await interaction.response.send_message(
+                embed=error_embed("Lỗi", "Không tìm thấy panel."), ephemeral=True)
+
+        # Cố xóa message panel nếu còn tồn tại
+        if panel.get('channel_id') and panel.get('message_id'):
+            channel = interaction.guild.get_channel(panel['channel_id'])
+            if isinstance(channel, discord.TextChannel):
+                try:
+                    msg = await channel.fetch_message(panel['message_id'])
+                    await msg.delete()
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    pass  # admin đã xóa tay rồi, bỏ qua
+
+        await self.bot.db.delete_panel(panel_id)
+        await interaction.response.send_message(
+            embed=success_embed("Đã xóa panel", f"Panel `{panel_id}` đã được xóa."),
+            ephemeral=True)
+
+    async def _refresh_panel_message(self, guild: discord.Guild, panel_id: int):
+        """Cập nhật lại embed của message panel đang hiển thị (nếu còn)."""
+        panel = await self.bot.db.get_panel(panel_id)
+        if not panel or not panel.get('channel_id') or not panel.get('message_id'):
+            return
+        channel = guild.get_channel(panel['channel_id'])
+        if not isinstance(channel, discord.TextChannel):
+            return
+        try:
+            msg = await channel.fetch_message(panel['message_id'])
+            embed = create_embed(title=panel['title'], description=panel['content'],
+                                 color=panel['color'] or COLORS['primary'])
+            view = TicketPanelView(self.bot)
+            if panel.get('button_label'):
+                view.create.label = panel['button_label']
+            await msg.edit(embed=embed, view=view)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+
 
 async def setup(bot):
     await bot.add_cog(TicketPanel(bot))

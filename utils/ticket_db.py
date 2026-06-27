@@ -217,6 +217,30 @@ class TicketDBMixin:
                 (channel_id, message_id, panel_id))
             await self._commit_if_not_in_tx()
 
+    async def update_panel(self, panel_id: int, **kwargs) -> bool:
+        async with self._lock:
+            if not self.conn:
+                return False
+            valid = ['title', 'content', 'button_label', 'welcome_message', 'color']
+            updates = {k: v for k, v in kwargs.items() if k in valid and v is not None}
+            if not updates:
+                return False
+            clause = ", ".join(f"{k}=?" for k in updates)
+            await self.conn.execute(
+                f"UPDATE ticket_panels SET {clause} WHERE panel_id=?",
+                list(updates.values()) + [panel_id])
+            await self._commit_if_not_in_tx()
+            return True
+
+    async def delete_panel(self, panel_id: int):
+        async with self._lock:
+            if not self.conn:
+                return
+            await self.conn.execute(
+                "DELETE FROM ticket_panels WHERE panel_id=?", (panel_id,))
+            await self._commit_if_not_in_tx()
+
+
     # ---------- tickets ----------
     async def create_ticket(self, guild_id: int, number: int, channel_id: int,
                             owner_id: int, panel_id: Optional[int]) -> int:
