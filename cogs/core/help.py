@@ -1,208 +1,220 @@
-"""Help command - Auto-generates command list"""
+"""Help command - Phân trang theo cog với nút điều hướng"""
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
 from typing import Optional
+
 from utils.embeds import create_embed, info_embed
 from utils.constants import COLORS, EMOJIS
 
 
+CATEGORY_META = {
+    "Moderation":   ("🛡️", "Quản lý server và thành viên"),
+    "Tickets":      ("🎫", "Hệ thống ticket hỗ trợ"),
+    "Utilities":    ("🔧", "Công cụ tiện ích"),
+    "Core":         ("⚙️", "Lệnh cốt lõi của bot"),
+    "Interactions": ("🖱️", "Context menu (chuột phải)"),
+    "Other":        ("📦", "Các lệnh khác"),
+}
+
+
+def categorize_commands(bot) -> dict[str, list[app_commands.Command]]:
+    """Phân loại tất cả slash command theo module/cog."""
+    categories: dict[str, list[app_commands.Command]] = {}
+    for command in bot.tree.walk_commands():
+        if not isinstance(command, app_commands.Command):
+            continue
+        binding = getattr(command, "binding", None)
+        category = "Other"
+        if binding and hasattr(binding, "__module__"):
+            parts = binding.__module__.split(".")
+            if len(parts) >= 2:
+                category = parts[1].title()
+        categories.setdefault(category, []).append(command)
+    # sắp xếp lệnh trong mỗi category theo tên
+    for cmds in categories.values():
+        cmds.sort(key=lambda c: c.qualified_name)
+    return categories
+
+
+def build_overview_embed(bot, categories: dict) -> discord.Embed:
+    total = sum(len(c) for c in categories.values())
+    embed = create_embed(
+        title=f"{EMOJIS.get('bot', '🤖')} Trung tâm trợ giúp",
+        description=(
+            f"Bot có **{total} lệnh** trong **{len(categories)} nhóm**.\n\n"
+            "Dùng menu bên dưới để chọn nhóm lệnh, hoặc các nút để chuyển trang.\n"
+            "Gõ `/help command:<tên>` để xem chi tiết một lệnh."
+        ),
+        color=COLORS['primary'],
+    )
+    for cat in sorted(categories):
+        emoji, desc = CATEGORY_META.get(cat, ("📌", "Lệnh khác"))
+        embed.add_field(
+            name=f"{emoji} {cat} ({len(categories[cat])})",
+            value=f"*{desc}*",
+            inline=True,
+        )
+    embed.set_footer(text="Trang tổng quan")
+    return embed
+
+
+def build_category_embed(category: str, cmds: list, index: int, total_pages: int) -> discord.Embed:
+    emoji, desc = CATEGORY_META.get(category, ("📌", "Lệnh khác"))
+    lines = []
+    for cmd in cmds:
+        cmd_desc = getattr(cmd, "description", None) or "Không có mô tả"
+        lines.append(f"`/{cmd.qualified_name}`\n└ {cmd_desc}")
+    embed = create_embed(
+        title=f"{emoji} {category}",
+        description=f"*{desc}*\n\n" + "\n\n".join(lines),
+        color=COLORS['info'],
+    )
+    embed.set_footer(text=f"Nhóm {index + 1}/{total_pages} • {len(cmds)} lệnh")
+    return embed
+
+
+class HelpView(discord.ui.View):
+    """Điều hướng help: dropdown chọn nhóm + nút Trước/Sau/Tổng quan."""
+
+    def __init__(self, bot, author_id: int, categories: dict):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.author_id = author_id
+        self.categories = categories
+        self.cat_names = sorted(categories)
+        self.current = -1  # -1 = trang tổng quan
+
+        # Dropdown chọn category
+        options = [
+            discord.SelectOption(
+                label=cat,
+                description=CATEGORY_META.get(cat, ("", "Lệnh khác"))[1][:90],
+                emoji=CATEGORY_META.get(cat, ("📌", ""))[0],
+                value=str(i),
+            )
+            for i, cat in enumerate(self.cat_names)
+        ]
+        self.select = discord.ui.Select(placeholder="📂 Chọn nhóm lệnh...", options=options)
+        self.select.callback = self._on_select
+        self.add_item(self.select)
+        self._update_buttons()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Đây không phải bảng trợ giúp của bạn, hãy gõ `/help` để mở của riêng bạn.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    def _update_buttons(self):
+        self.prev_btn.disabled = self.current <= -1
+        self.next_btn.disabled = self.current >= len(self.cat_names) - 1
+        self.home_btn.disabled = self.current == -1
+
+    def _current_embed(self) -> discord.Embed:
+        if self.current == -1:
+            return build_overview_embed(self.bot, self.categories)
+        cat = self.cat_names[self.current]
+        return build_category_embed(cat, self.categories[cat], self.current, len(self.cat_names))
+
+    async def _refresh(self, interaction: discord.Interaction):
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self._current_embed(), view=self)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        self.current = int(self.select.values[0])
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tổng quan", emoji="🏠", style=discord.ButtonStyle.secondary)
+    async def home_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current = -1
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Trước", emoji="◀️", style=discord.ButtonStyle.primary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current = max(-1, self.current - 1)
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Sau", emoji="▶️", style=discord.ButtonStyle.primary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current = min(len(self.cat_names) - 1, self.current + 1)
+        await self._refresh(interaction)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+
+
 class HelpCommand(commands.Cog):
-    """Dynamic help command that auto-detects all commands"""
-    
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger('BlastBot.Core.Help')
-    
-    def _get_command_categories(self) -> dict[str, list[app_commands.Command]]:
-        """Tự động phân loại commands theo cog/module."""
-        categories = {}
-        
-        for command in self.bot.tree.walk_commands():
-            if isinstance(command, app_commands.Command):
-                binding = getattr(command, 'binding', None)
-                category = "Other"
-                if binding and hasattr(binding, '__module__'):
-                    module_parts = binding.__module__.split('.')
-                    if len(module_parts) >= 2:
-                        category = module_parts[1].title()
-                
-                categories.setdefault(category, []).append(command)
-        
-        return categories
-    
-    def _get_category_emoji(self, category: str) -> str:
-        """Get emoji cho từng category"""
-        emoji_map = {
-            "Moderation": "🛡️",
-            "Utilities": "🔧",
-            "Core": "⚙️",
-            "Interactions": "🖱️",
-            "Fun": "🎮",
-            "Info": "📊",
-            "Other": "📦"
-        }
-        return emoji_map.get(category, "📌")
-    
-    def _get_category_description(self, category: str) -> str:
-        """Get description cho từng category"""
-        desc_map = {
-            "Moderation": "Quản lý server và members",
-            "Utilities": "Công cụ tiện ích",
-            "Core": "Lệnh cốt lõi của bot",
-            "Interactions": "Context menus và modals",
-            "Fun": "Giải trí",
-            "Info": "Thông tin",
-            "Other": "Các lệnh khác"
-        }
-        return desc_map.get(category, "Miscellaneous commands")
-    
-    @app_commands.command(name="help", description="Hiển thị tất cả commands của bot")
-    @app_commands.describe(command="Tên command cần xem chi tiết (optional)")
-    async def help(
-        self,
-        interaction: discord.Interaction,
-        command: Optional[str] = None
-    ):
-        """Dynamic help command"""
+
+    @app_commands.command(name="help", description="Hiển thị danh sách lệnh của bot")
+    @app_commands.describe(command="Tên lệnh cần xem chi tiết (tùy chọn)")
+    async def help(self, interaction: discord.Interaction, command: Optional[str] = None):
         try:
             if command:
                 await self._show_command_help(interaction, command)
                 return
-            
-            categories = self._get_command_categories()
-            
+
+            categories = categorize_commands(self.bot)
             if not categories:
                 await interaction.response.send_message(
-                    embed=info_embed("Không có commands nào được tìm thấy!"),
-                    ephemeral=True
-                )
+                    embed=info_embed("Không tìm thấy lệnh nào!"), ephemeral=True)
                 return
-            
-            embed = create_embed(
-                title=f"{EMOJIS.get('bot', '🤖')} Danh sách Commands",
-                description=f"Bot hiện có **{sum(len(cmds) for cmds in categories.values())} commands** trong **{len(categories)} categories**\n\n"
-                           f"Sử dụng `/help <command>` để xem chi tiết một command.",
-                color=COLORS['primary']
-            )
-            
-            for category, cmds in sorted(categories.items()):
-                emoji = self._get_category_emoji(category)
-                desc = self._get_category_description(category)
-                
-                command_list = []
-                for cmd in sorted(cmds, key=lambda x: x.qualified_name):
-                    cmd_desc = getattr(cmd, 'description', None) or "No description"
-                    command_list.append(f"`/{cmd.qualified_name}` - {cmd_desc}")
-                
-                if command_list:
-                    embed.add_field(
-                        name=f"{emoji} {category} ({len(cmds)})",
-                        value=f"*{desc}*\n" + "\n".join(command_list[:5]),
-                        inline=False
-                    )
-                    
-                    if len(command_list) > 5:
-                        for i in range(5, len(command_list), 5):
-                            embed.add_field(
-                                name="⠀",
-                                value="\n".join(command_list[i:i+5]),
-                                inline=False
-                            )
-            
-            total_cmds = sum(len(cmds) for cmds in categories.values())
-            embed.set_footer(
-                text=f"Tổng cộng {total_cmds} commands • Sử dụng /help <command> để xem chi tiết"
-            )
-            
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            self.logger.info(f"{interaction.user} đã xem danh sách help")
-            
+
+            view = HelpView(self.bot, interaction.user.id, categories)
+            await interaction.response.send_message(
+                embed=build_overview_embed(self.bot, categories),
+                view=view, ephemeral=True)
         except Exception as e:
             self.logger.error(f"Error in help command: {e}", exc_info=True)
-            await interaction.response.send_message(
-                embed=info_embed(f"Lỗi: {str(e)}"),
-                ephemeral=True
-            )
-    
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    embed=info_embed(f"Lỗi: {e}"), ephemeral=True)
+
     async def _show_command_help(self, interaction: discord.Interaction, command_name: str):
-        """Hiển thị chi tiết một command"""
         cmd = None
-        for command in self.bot.tree.walk_commands():
-            if isinstance(command, app_commands.Command) and command.qualified_name == command_name:
-                cmd = command
+        for c in self.bot.tree.walk_commands():
+            if isinstance(c, app_commands.Command) and c.qualified_name == command_name.lstrip("/"):
+                cmd = c
                 break
-        
         if not cmd:
             await interaction.response.send_message(
                 embed=info_embed(
-                    f"Command `{command_name}` không tồn tại!",
-                    "Sử dụng `/help` để xem danh sách tất cả commands."
-                ),
-                ephemeral=True
-            )
+                    f"Lệnh `{command_name}` không tồn tại!",
+                    "Gõ `/help` để xem danh sách lệnh."),
+                ephemeral=True)
             return
-        
+
         embed = create_embed(
-            title=f"📖 Command: /{cmd.qualified_name}",
-            description=getattr(cmd, 'description', None) or "Không có mô tả",
-            color=COLORS['info']
-        )
-        
-        parameters = getattr(cmd, 'parameters', [])
-        if parameters:
-            params_text = []
-            for param in parameters:
-                required = "**Required**" if getattr(param, 'required', False) else "*Optional*"
-                param_desc = getattr(param, 'description', None) or "No description"
-                param_name = getattr(param, 'name', 'param')
-                params_text.append(f"• `{param_name}` ({required}): {param_desc}")
-            
-            embed.add_field(
-                name="⚙️ Parameters",
-                value="\n".join(params_text),
-                inline=False
-            )
-        else:
-            embed.add_field(
-                name="⚙️ Parameters",
-                value="*Command này không có parameters*",
-                inline=False
-            )
-        
-        param_names = " ".join([f"<{getattr(p, 'name', 'p')}>" if getattr(p, 'required', False) else f"[{getattr(p, 'name', 'p')}]" for p in parameters])
-        usage = f"`/{cmd.qualified_name} {param_names.strip()}`" if param_names else f"`/{cmd.qualified_name}`"
-        
-        embed.add_field(
-            name="💡 Cách dùng",
-            value=usage,
-            inline=False
-        )
-        
-        default_perms = getattr(cmd, 'default_permissions', None)
-        if default_perms:
-            try:
-                perms = [
-                    name.replace('_', ' ').title()
-                    for name, value in default_perms
-                    if value
-                ]
-                if perms:
-                    embed.add_field(
-                        name="🔐 Permissions Required",
-                        value=", ".join(perms),
-                        inline=False
-                    )
-            except Exception:
-                pass
-        
+            title=f"📖 /{cmd.qualified_name}",
+            description=getattr(cmd, "description", None) or "Không có mô tả",
+            color=COLORS['info'])
+
+        params = getattr(cmd, "parameters", [])
+        if params:
+            lines = []
+            for p in params:
+                req = "**Bắt buộc**" if getattr(p, "required", False) else "*Tùy chọn*"
+                pdesc = getattr(p, "description", None) or "Không có mô tả"
+                lines.append(f"• `{getattr(p, 'name', 'param')}` ({req}): {pdesc}")
+            embed.add_field(name="⚙️ Tham số", value="\n".join(lines), inline=False)
+
+        usage_parts = [
+            f"<{getattr(p, 'name', 'p')}>" if getattr(p, "required", False)
+            else f"[{getattr(p, 'name', 'p')}]" for p in params
+        ]
+        usage = f"`/{cmd.qualified_name} {' '.join(usage_parts)}`".strip()
+        embed.add_field(name="💡 Cách dùng", value=usage, inline=False)
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        self.logger.info(f"{interaction.user} đã xem help cho command {command_name}")
-    
-    async def cog_unload(self):
-        return
 
 
 async def setup(bot):

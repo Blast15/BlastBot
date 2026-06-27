@@ -32,19 +32,9 @@ class TicketDBMixin:
                 guild_id INTEGER NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
                 color INTEGER NOT NULL, category_id INTEGER NOT NULL,
                 button_label TEXT NOT NULL, button_emoji TEXT,
-                welcome_message TEXT, form_id INTEGER,
+                welcome_message TEXT,
                 mention_on_open TEXT NOT NULL DEFAULT '[]',
                 message_id INTEGER, channel_id INTEGER)""")
-        await c.execute("""
-            CREATE TABLE IF NOT EXISTS ticket_forms (
-                form_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id INTEGER NOT NULL, title TEXT NOT NULL)""")
-        await c.execute("""
-            CREATE TABLE IF NOT EXISTS ticket_form_fields (
-                field_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                form_id INTEGER NOT NULL, label TEXT NOT NULL, placeholder TEXT,
-                style TEXT NOT NULL DEFAULT 'short', required INTEGER NOT NULL DEFAULT 1,
-                position INTEGER NOT NULL DEFAULT 0)""")
         await c.execute("""
             CREATE TABLE IF NOT EXISTS tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,11 +170,11 @@ class TicketDBMixin:
             cur = await self.conn.execute(
                 """INSERT INTO ticket_panels
                    (guild_id, title, content, color, category_id, button_label,
-                    button_emoji, welcome_message, form_id, mention_on_open)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    button_emoji, welcome_message, mention_on_open)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (guild_id, data['title'], data['content'], data['color'],
                  data['category_id'], data['button_label'], data.get('button_emoji'),
-                 data.get('welcome_message'), data.get('form_id'),
+                 data.get('welcome_message'),
                  json.dumps(data.get('mention_on_open', []))))
             await self._commit_if_not_in_tx()
             return cur.lastrowid
@@ -226,45 +216,6 @@ class TicketDBMixin:
                 "UPDATE ticket_panels SET channel_id=?, message_id=? WHERE panel_id=?",
                 (channel_id, message_id, panel_id))
             await self._commit_if_not_in_tx()
-
-    # ---------- forms ----------
-    async def create_form(self, guild_id: int, title: str) -> int:
-        async with self._lock:
-            if not self.conn:
-                return 0
-            cur = await self.conn.execute(
-                "INSERT INTO ticket_forms (guild_id, title) VALUES (?,?)", (guild_id, title))
-            await self._commit_if_not_in_tx()
-            return cur.lastrowid
-
-    async def add_form_field(self, form_id: int, label: str, placeholder: str,
-                             style: str, required: bool, position: int):
-        async with self._lock:
-            if not self.conn:
-                return
-            await self.conn.execute(
-                """INSERT INTO ticket_form_fields
-                   (form_id, label, placeholder, style, required, position)
-                   VALUES (?,?,?,?,?,?)""",
-                (form_id, label, placeholder, style, int(required), position))
-            await self._commit_if_not_in_tx()
-
-    async def list_forms(self, guild_id: int) -> list[dict]:
-        async with self._lock:
-            if not self.conn:
-                return []
-            async with self.conn.execute(
-                "SELECT * FROM ticket_forms WHERE guild_id=?", (guild_id,)) as cur:
-                return [dict(r) for r in await cur.fetchall()]
-
-    async def get_form_fields(self, form_id: int) -> list[dict]:
-        async with self._lock:
-            if not self.conn:
-                return []
-            async with self.conn.execute(
-                "SELECT * FROM ticket_form_fields WHERE form_id=? ORDER BY position",
-                (form_id,)) as cur:
-                return [dict(r) for r in await cur.fetchall()]
 
     # ---------- tickets ----------
     async def create_ticket(self, guild_id: int, number: int, channel_id: int,
