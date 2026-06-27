@@ -192,6 +192,17 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            await self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS temp_roles (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role_id INTEGER NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    PRIMARY KEY (guild_id, user_id, role_id)
+                )
+            """)
+
             
             await self.conn.commit()
             logger.info("Database tables initialized")
@@ -219,54 +230,6 @@ class Database:
         async with self.conn.execute("SELECT message_id FROM suggestion_messages") as cursor:
             rows = await cursor.fetchall()
         return [row['message_id'] for row in rows]
-
-    async def save_role_menu(self, message_id: int, guild_id: int, channel_id: int, role_ids: list[int], mode: str):
-        if not self.conn:
-            return
-
-        # Đảm bảo guild tồn tại để không vi phạm FOREIGN KEY constraint
-        await self.conn.execute(
-            "INSERT OR IGNORE INTO guilds (guild_id) VALUES (?)",
-            (guild_id,)
-        )
-
-        await self.conn.execute(
-            """
-            INSERT INTO role_menus (message_id, guild_id, channel_id, role_ids, mode)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(message_id) DO UPDATE SET
-                guild_id = excluded.guild_id,
-                channel_id = excluded.channel_id,
-                role_ids = excluded.role_ids,
-                mode = excluded.mode
-            """,
-            (message_id, guild_id, channel_id, json.dumps(role_ids), mode)
-        )
-        await self.conn.commit()
-
-
-    async def get_role_menus(self) -> list[dict]:
-        if not self.conn:
-            return []
-
-        async with self.conn.execute("SELECT * FROM role_menus") as cursor:
-            rows = await cursor.fetchall()
-            menus = []
-            for row in rows:
-                menu = dict(row)
-                try:
-                    menu['role_ids'] = [int(role_id) for role_id in json.loads(menu['role_ids'])]
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    menu['role_ids'] = []
-                menus.append(menu)
-            return menus
-
-    async def delete_role_menu(self, message_id: int):
-        if not self.conn:
-            return
-
-        await self.conn.execute("DELETE FROM role_menus WHERE message_id = ?", (message_id,))
-        await self.conn.commit()
 
     async def set_vote(self, message_id: int, user_id: int, vote: int):
         """Lưu/cập nhật vote (vote = 1 hoặc -1)."""
@@ -526,3 +489,37 @@ class Database:
         ) as cur:
             row = await cur.fetchone()
         return row[0] if row else 0
+
+    async def add_temp_role(self, guild_id: int, user_id: int, role_id: int, expires_at: datetime):
+        if not self.conn:
+            return
+        await self.conn.execute(
+            """
+            INSERT INTO temp_roles (guild_id, user_id, role_id, expires_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(guild_id, user_id, role_id)
+            DO UPDATE SET expires_at = excluded.expires_at
+            """,
+            (guild_id, user_id, role_id, expires_at.isoformat())
+        )
+        await self.conn.commit()
+
+    async def remove_temp_role(self, guild_id: int, user_id: int, role_id: int):
+        if not self.conn:
+            return
+        await self.conn.execute(
+            "DELETE FROM temp_roles WHERE guild_id = ? AND user_id = ? AND role_id = ?",
+            (guild_id, user_id, role_id)
+        )
+        await self.conn.commit()
+
+    async def get_expired_temp_roles(self) -> list[dict]:
+        """Lấy các temp role đã hết hạn."""
+        if not self.conn:
+            return []
+        now = datetime.now(timezone.utc).isoformat()
+        async with self.conn.execute(
+            "SELECT * FROM temp_roles WHERE expires_at <= ?", (now,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

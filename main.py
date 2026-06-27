@@ -119,61 +119,18 @@ class BlastBot(commands.Bot):
         return extensions
 
     async def _register_persistent_views(self):
-        """Đăng ký lại các persistent role menu views đã lưu trong DB."""
         if self._persistent_views_registered or not self.db:
             return
 
         try:
-            from cogs.utilities.roles import RoleMenuView
-
-            menus = await self.db.get_role_menus()
-            registered = 0
-
-            for menu in menus:
-                guild = self.get_guild(menu['guild_id'])
-                if not guild:
-                    continue
-
-                roles = [guild.get_role(rid) for rid in menu['role_ids']]
-                roles = [r for r in roles if r is not None]
-
-                if not roles:
-                    await self.db.delete_role_menu(menu['message_id'])
-                    continue
-
-                view = RoleMenuView(
-                    roles=roles,
-                    mode=menu['mode'],
-                    message_id=menu['message_id']
-                )
-
-                channel = self.get_channel(menu['channel_id'])
-                if channel and hasattr(channel, 'fetch_message'):
-                    try:
-                        message = await channel.fetch_message(menu['message_id'])
-                        await message.edit(view=view)
-                    except discord.NotFound:
-                        await self.db.delete_role_menu(menu['message_id'])
-                        continue
-                    except discord.Forbidden:
-                        logger.warning(
-                            f"Không đủ quyền cập nhật role menu {menu['message_id']} trong channel {menu['channel_id']}"
-                        )
-                    except discord.HTTPException as e:
-                        logger.warning(
-                            f"Không thể cập nhật role menu {menu['message_id']}: {e}"
-                        )
-
-                self.add_view(view, message_id=menu['message_id'])
-                registered += 1
-
             from utils.modals import SuggestionVotingView
             self.add_view(SuggestionVotingView(self.db))
 
             self._persistent_views_registered = True
-            logger.info(f"Đã đăng ký lại {registered} persistent role menu views")
+            logger.info("Đã đăng ký lại persistent views")
         except Exception as e:
             logger.error(f"❌ Không thể đăng ký persistent views: {e}", exc_info=True)
+
     
     async def on_ready(self):
         """Called when bot is ready"""
