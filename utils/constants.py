@@ -68,11 +68,6 @@ CACHE_CONFIG = {
     'guild_config_maxsize': 128,
 }
 
-# Role menu configuration
-ROLE_MENU_CONFIG = {
-    'max_roles_per_menu': 25,  # Discord limit
-}
-
 # Clear command configuration
 CLEAR_CONFIG = {
     'max_messages': 100,
@@ -101,7 +96,6 @@ COMMAND_COOLDOWNS = {
     'kick': 10.0,
     'ban': 15.0,
     'timeout': 10.0,
-    'rolemenu': 30.0,
 }
 
 # Validation limits
