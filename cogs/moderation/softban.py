@@ -116,7 +116,3 @@ class SoftbanCommand(BaseModerationCog):
         except Exception as e:
             self.logger.error(f"Error in softban command: {e}", exc_info=True)
             await self.safe_error_response(interaction, "Lỗi", f"Không thể softban: {str(e)}")
-
-
-async def setup(bot):
-    await bot.add_cog(SoftbanCommand(bot))
