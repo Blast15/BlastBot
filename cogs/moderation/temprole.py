@@ -139,7 +139,3 @@ class TempRoleCommand(BaseModerationCog):
     @check_expired_roles.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
-
-
-async def setup(bot):
-    await bot.add_cog(TempRoleCommand(bot))
