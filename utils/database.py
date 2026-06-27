@@ -100,22 +100,29 @@ class Database:
         ttl_seconds=CACHE_CONFIG['guild_config_ttl_seconds']
     )
     
-    def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or os.getenv('DB_PATH', './data/bot.db')
-        self.conn: Optional[aiosqlite.Connection] = None
+    def __init__(self, db_path: str | None = None):
+        self.db_path = db_path or Config.DB_PATH
+        self.conn: aiosqlite.Connection | None = None
+        self._lock = asyncio.Lock()
     
-    async def connect(self):
-        """Kết nối đến database"""
+    async def connect(self) -> None:
+    """Kết nối đến database và cấu hình PRAGMA.
+
+    Bật WAL mode để cải thiện đồng thời đọc/ghi, và busy_timeout để
+    aiosqlite tự retry thay vì raise ngay khi DB tạm thời bị khóa.
+    """
         try:
             self.conn = await aiosqlite.connect(self.db_path)
-            if self.conn:
-                self.conn.row_factory = aiosqlite.Row
-                await self.conn.execute("PRAGMA foreign_keys = ON")
-                await self.initialize_tables()
+            self.conn.row_factory = aiosqlite.Row
+            await self.conn.execute("PRAGMA foreign_keys = ON")
+            await self.conn.execute("PRAGMA journal_mode = WAL")
+            await self.conn.execute("PRAGMA busy_timeout = 5000")
+            await self.initialize_tables()
             logger.info(f"Database connected: {self.db_path}")
         except aiosqlite.Error as e:
             logger.error(f"Failed to connect to database: {e}")
             raise DatabaseError(f"Database connection failed: {e}")
+
     
     async def close(self):
         """Đóng kết nối database"""
