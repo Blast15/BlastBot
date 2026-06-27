@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from utils.config import Config
 
-# Load environment variables
 load_dotenv()
 
 # Setup logging
