@@ -13,11 +13,13 @@ from utils.constants import COLORS, EMOJIS
 CATEGORY_META = {
     "Moderation":   ("🛡️", "Quản lý server và thành viên"),
     "Tickets":      ("🎫", "Hệ thống ticket hỗ trợ"),
+    "Automation":   ("🤖", "Lời chào, tạm biệt & auto-message"),
     "Utilities":    ("🔧", "Công cụ tiện ích"),
     "Core":         ("⚙️", "Lệnh cốt lõi của bot"),
     "Interactions": ("🖱️", "Context menu (chuột phải)"),
     "Other":        ("📦", "Các lệnh khác"),
 }
+
 
 
 def categorize_commands(bot) -> dict[str, list[app_commands.Command]]:

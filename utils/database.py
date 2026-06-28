@@ -13,6 +13,7 @@ from utils.config import Config
 from utils.constants import CACHE_CONFIG
 from utils.error_handler import DatabaseError
 from utils.ticket_db import TicketDBMixin
+from utils.automation_db import AutomationDBMixin
 
 
 logger = logging.getLogger('BlastBot.Database')
@@ -130,7 +131,7 @@ class LRUCache:
         }
 
 
-class Database(TicketDBMixin):
+class Database(TicketDBMixin, AutomationDBMixin):
     """Wrapper cho aiosqlite database operations với caching và thread safety"""
 
     def __init__(self, db_path: str | None = None):
@@ -278,6 +279,7 @@ class Database(TicketDBMixin):
             """)
 
             await self.init_ticket_tables()
+            await self.init_automation_tables()
             await self._commit_if_not_in_tx()
             logger.info("Database tables initialized")
         except aiosqlite.Error as e:

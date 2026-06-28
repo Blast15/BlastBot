@@ -113,3 +113,13 @@ TICKET_CONFIG = {
     'default_color': 0x5865F2,
 }
 
+# Automation configuration
+AUTOMATION_CONFIG = {
+    'auto_message_check_minutes': 1,
+    'min_interval_minutes': 5,
+    'max_interval_minutes': 10080,   # 7 ngày
+    'max_auto_messages': 20,
+    'default_color': 0x5865F2,
+}
+
+
