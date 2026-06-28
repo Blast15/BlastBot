@@ -1,4 +1,3 @@
-
 # BlastBot — Development Standards
 
 This document is the **single source of truth** for all conventions when developing
@@ -59,7 +58,9 @@ should be gradually refactored to match).
 
 - Create a directory `cogs/<feature>/` containing an `__init__.py` with a `setup(bot)` function.
 - Auto-discovery in `main.py` loads it automatically; **never** edit `main.py` to register a cog.
-- Each individual cog file must also have its own `async def setup(bot)` (so it can be loaded standalone if needed).
+- The package's `__init__.py` `setup(bot)` is what auto-discovery loads, and it registers
+  every cog in the package. Individual cog files conventionally also include their own
+  `setup(bot)` for standalone loading, but support files (`views.py`, `helpers.py`) must not.
 
 ```python
 # cogs/<feature>/__init__.py
@@ -93,11 +94,11 @@ BlastBot/
 ├── main.py                  # Entry point, BlastBot class (DO NOT edit except for infra changes)
 ├── cogs/                    # Features, split by DOMAIN
 │   ├── <domain>/
-│   │   ├── __init__.py      # REQUIRED: async def setup(bot)
-│   │   ├── <feature>.py     # One file = one functional group
-│   │   ├── helpers.py       # (optional) domain-specific helpers
-│   │   ├── views.py         # (optional) UI components
-│   │   └── <daemon>.py      # (optional) background loop
+│   │   ├── __init__.py      # REQUIRED: async def setup(bot) — the auto-discovery entry point
+│   │   ├── <feature>.py     # One file = one functional group (a cog)
+│   │   ├── helpers.py       # (optional) domain-specific helpers — NO setup
+│   │   ├── views.py         # (optional) UI components — NO setup
+│   │   └── <daemon>.py      # (optional) background loop (a cog)
 ├── events/                  # Global listeners (error handler, etc.)
 ├── utils/                   # Shared infrastructure: database, embeds, views, modals...
 │   └── <domain>_db.py       # DB mixin for each large domain
@@ -126,9 +127,33 @@ BlastBot/
 
 ### 4.1 Standard cog skeleton
 
-Every cog file **must** have a `setup` function at the bottom:
+Not every file in a `cogs/<feature>/` package is a cog. Distinguish three kinds of files:
+
+1. **The package `__init__.py`** — this is the *only* entry point auto-discovery actually
+   loads (auto-discovery scans for packages with an `__init__.py`). Its `setup(bot)` is
+   responsible for registering **all** cogs in the package. **This `setup` is mandatory.**
+
+2. **Cog files** (e.g. `panel.py`, `setup.py`, `auto_message.py`) — each contains one or more
+   `commands.Cog` classes. By convention these *also* include their own `async def setup(bot)`
+   so they can be loaded standalone if ever needed, but at runtime they are loaded **via the
+   package `__init__.py`**, not individually by auto-discovery.
+
+3. **Support files** (e.g. `views.py`, `helpers.py`) — these contain Views, helper functions,
+   or shared logic, **not** cogs. They **must not** have a `setup` function and are simply
+   imported by the cog files that use them.
 
 ```python
+# cogs/<feature>/__init__.py  — REQUIRED setup, registers everything
+from .main_cog import MainCog
+from .daemon import DaemonCog
+
+async def setup(bot):
+    await bot.add_cog(MainCog(bot))
+    await bot.add_cog(DaemonCog(bot))
+```
+
+```python
+# cogs/<feature>/main_cog.py  — a cog file
 """Short description of what the cog does (Vietnamese)."""
 
 import discord
@@ -142,28 +167,19 @@ from utils.constants import COLORS
 logger = logging.getLogger('BlastBot.<Domain>.<Feature>')
 
 
-class MyFeature(commands.Cog):
+class MainCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     # ... commands ...
 
 
-async def setup(bot):
-    await bot.add_cog(MyFeature(bot))
+async def setup(bot):              # convention for standalone loading
+    await bot.add_cog(MainCog(bot))
 ```
 
 ### 4.2 Rules
 
-- The domain's **`__init__.py`** gathers all sub-cogs and loads them in a single `setup`:
-  ```python
-  from .greetings import Greetings
-  from .auto_message import AutoMessage
-
-  async def setup(bot):
-      await bot.add_cog(Greetings(bot))
-      await bot.add_cog(AutoMessage(bot))
-  ```
 - Moderation cogs **must** inherit from `BaseModerationCog` to share validation/logging:
   ```python
   class MyModCommand(BaseModerationCog):
@@ -722,6 +738,7 @@ Copy this checklist into the PR description and check every box before merging:
 ### ✅ BlastBot Feature Checklist
 
 - [ ] Cog lives in `cogs/<feature>/` with `__init__.py` containing `setup`; main.py NOT edited to register
+- [ ] Support files (views.py, helpers.py) have NO `setup`; only cog files and the package __init__ do
 - [ ] DB access via mixin `utils/<feature>_db.py`, wired into `Database` and `init_*_tables` called
 - [ ] Every DB method wraps `self._lock` + `_commit_if_not_in_tx()`; updates whitelist fields
 - [ ] Each entity has full CRUD at both DB and user-command layers (at minimum add/list/delete)
@@ -767,7 +784,8 @@ Copy this checklist into the PR description and check every box before merging:
 | `except: pass` swallowing errors in a task | `except Exception as e: logger.error(..., exc_info=True)` |
 | Respond to the same `interaction` twice | Use `followup` / `edit_original_response` afterward |
 | Reinvent length/range validation | Use `validate_string_length` / `validate_number_range` |
-| Manually register cogs in `main.py` | Let auto-discovery handle it (just provide `setup`) |
+| Put a `setup` in a support file (views.py/helpers.py) | Only cog files and package `__init__.py` have `setup` |
+| Manually register cogs in `main.py` | Let auto-discovery handle it (just provide `setup` in the package `__init__`) |
 
 ---
 
