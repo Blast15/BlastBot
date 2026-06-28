@@ -1,99 +1,112 @@
 """Base classes và utilities cho moderation commands"""
 
+import logging
+
+import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Optional, Tuple
-import logging
-import aiosqlite
+
 from utils.embeds import error_embed
-from utils.constants import MESSAGES
-from utils.error_handler import validate_number_range, ValidationError
 
 
 def require_guild_permissions(**perms):
     """Decorator check permissions của user trước khi callback chạy."""
+
     async def predicate(interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
             raise app_commands.CheckFailure("Không thể xác định được member!")
-        missing = [p for p, val in perms.items() if val and not getattr(interaction.user.guild_permissions, p, False)]
+        missing = [
+            p
+            for p, val in perms.items()
+            if val and not getattr(interaction.user.guild_permissions, p, False)
+        ]
         if missing:
             raise app_commands.MissingPermissions(missing)
         return True
+
     return app_commands.check(predicate)
 
 
 class BaseModerationCog(commands.Cog):
     """Base class cho tất cả moderation cogs với shared functionality"""
-    
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.logger = logging.getLogger(f'BlastBot.Moderation.{self.__class__.__name__}')
-    
+        self.logger = logging.getLogger(
+            f"BlastBot.Moderation.{self.__class__.__name__}"
+        )
+
     async def validate_hierarchy(
         self,
         interaction: discord.Interaction,
         target: discord.Member,
-        action: str = "thực hiện hành động này"
-    ) -> Tuple[bool, Optional[str]]:
+        action: str = "thực hiện hành động này",
+    ) -> tuple[bool, str | None]:
         """Validate hierarchy cho moderation actions"""
         if not isinstance(interaction.user, discord.Member):
             return False, "Không thể xác định moderator!"
-        
+
         if not interaction.guild:
             return False, "Không thể xác định guild!"
-        
+
         # Check if target is bot owner or admin
-        if target.guild_permissions.administrator and not interaction.user.guild_permissions.administrator:
+        if (
+            target.guild_permissions.administrator
+            and not interaction.user.guild_permissions.administrator
+        ):
             return False, f"Bạn không thể {action} với administrator!"
-        
+
         # Check moderator hierarchy
-        if target.top_role >= interaction.user.top_role and interaction.user.id != interaction.guild.owner_id:
-            return False, f"Bạn không thể {action} với member có role cao hơn hoặc bằng bạn!"
-        
+        if (
+            target.top_role >= interaction.user.top_role
+            and interaction.user.id != interaction.guild.owner_id
+        ):
+            return (
+                False,
+                f"Bạn không thể {action} với member có role cao hơn hoặc bằng bạn!",
+            )
+
         # Check bot hierarchy
-        bot_member = interaction.guild.get_member(self.bot.user.id) if self.bot.user else None
+        bot_member = (
+            interaction.guild.get_member(self.bot.user.id) if self.bot.user else None
+        )
         if bot_member and target.top_role >= bot_member.top_role:
-            return False, f"Bot không thể {action} với member có role cao hơn hoặc bằng bot!"
-        
+            return (
+                False,
+                f"Bot không thể {action} với member có role cao hơn hoặc bằng bot!",
+            )
+
         return True, None
-    
+
     async def validate_target(
-        self,
-        interaction: discord.Interaction,
-        target: discord.Member
-    ) -> Tuple[bool, Optional[str]]:
+        self, interaction: discord.Interaction, target: discord.Member
+    ) -> tuple[bool, str | None]:
         """Validate target member"""
         if target.id == interaction.user.id:
             return False, "Bạn không thể thực hiện hành động này với chính mình!"
-        
+
         if target.bot:
             return False, "Không thể thực hiện hành động này với bot!"
-        
+
         if interaction.guild and target.id == interaction.guild.owner_id:
             return False, "Không thể thực hiện hành động này với server owner!"
-        
+
         return True, None
-    
+
     async def send_error(
-        self,
-        interaction: discord.Interaction,
-        message: str,
-        use_followup: bool = False
+        self, interaction: discord.Interaction, message: str, use_followup: bool = False
     ):
         """Send error message"""
         embed = error_embed("Lỗi", message)
-        
+
         if use_followup or interaction.response.is_done():
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def safe_error_response(
-        self,
-        interaction: discord.Interaction,
-        title: str,
-        description: str
+        self, interaction: discord.Interaction, title: str, description: str
     ):
         """Gửi lỗi an toàn dù interaction đã defer hay chưa."""
         embed = error_embed(title, description)
@@ -114,7 +127,7 @@ class BaseModerationCog(commands.Cog):
             return True
         except (discord.Forbidden, discord.HTTPException):
             return False
-    
+
     async def log_moderation_action(
         self,
         guild: discord.Guild,
@@ -122,18 +135,20 @@ class BaseModerationCog(commands.Cog):
         action: str,
         target: discord.abc.User | None = None,
         reason: str | None = None,
-        extra_info: Optional[str] = None,
-        **extra
+        extra_info: str | None = None,
+        **extra,
     ):
         """Log moderation action vào log channel"""
-        from utils.embeds import create_embed
         from utils.constants import COLORS
-        
+        from utils.embeds import create_embed
+
         try:
-            db = getattr(self.bot, 'db', None)
+            db = getattr(self.bot, "db", None)
             if db is None:
-                if hasattr(self.bot, 'logger'):
-                    self.bot.logger.warning("log_moderation_action gọi khi DB chưa sẵn sàng")
+                if hasattr(self.bot, "logger"):
+                    self.bot.logger.warning(
+                        "log_moderation_action gọi khi DB chưa sẵn sàng"
+                    )
                 return
 
             target_id = target.id if target is not None else 0
@@ -150,31 +165,33 @@ class BaseModerationCog(commands.Cog):
             )
 
             config = await db.get_guild_config(guild.id)
-            
-            if not config.get('log_channel_id'):
+
+            if not config.get("log_channel_id"):
                 return
-            
-            log_channel = guild.get_channel(config['log_channel_id'])
-            if not log_channel or not isinstance(log_channel, (discord.TextChannel, discord.Thread)):
+
+            log_channel = guild.get_channel(config["log_channel_id"])
+            if not log_channel or not isinstance(
+                log_channel, (discord.TextChannel, discord.Thread)
+            ):
                 return
-            
+
             embed = create_embed(
                 title=f"🛡️ Moderation Action: {action.title()}",
                 description=f"**Moderator:** {moderator.mention} (`{moderator.id}`)\n"
-                           f"**Reason:** {reason or 'Không có lý do'}",
-                color=COLORS['warning']
+                f"**Reason:** {reason or 'Không có lý do'}",
+                color=COLORS["warning"],
             )
 
             if target_str:
                 embed.add_field(name="Target", value=target_str, inline=True)
-            
+
             if extra_info:
                 embed.add_field(name="Extra Info", value=extra_info, inline=False)
-            
+
             embed.set_footer(text="Action performed at")
             embed.timestamp = discord.utils.utcnow()
-            
+
             await log_channel.send(embed=embed)
-            
+
         except (aiosqlite.Error, discord.HTTPException) as e:
             self.logger.error(f"Failed to log moderation action: {e}", exc_info=True)

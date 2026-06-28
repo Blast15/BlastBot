@@ -1,7 +1,8 @@
-import discord
-from discord.ext import commands
-import traceback
 import logging
+import traceback
+
+from discord.ext import commands
+
 
 class ErrorHandler(commands.Cog):
     """A Cog that handles various command execution errors in the Discord bot.
@@ -13,7 +14,7 @@ class ErrorHandler(commands.Cog):
     Error types handled:
         - CommandNotFound: When an invalid command is used
         - MissingPermissions: When user lacks required permissions
-        - BotMissingPermissions: When bot lacks required permissions 
+        - BotMissingPermissions: When bot lacks required permissions
         - MissingRequiredArgument: When required command parameters are missing
         - CommandOnCooldown: When command is used before cooldown expires
         - DisabledCommand: When trying to use a disabled command
@@ -24,7 +25,7 @@ class ErrorHandler(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.logger = logging.getLogger('BlastBot.ErrorHandler')
+        self.logger = logging.getLogger("BlastBot.ErrorHandler")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context, error: Exception):
@@ -48,29 +49,31 @@ class ErrorHandler(commands.Cog):
         if isinstance(error, commands.CommandNotFound):
             await ctx.send("❌ Lệnh không tồn tại!")
             return
-            
+
         if isinstance(error, commands.MissingPermissions):
             perms = ", ".join(error.missing_permissions)
             await ctx.send(f"❌ Bạn cần quyền {perms} để thực hiện lệnh này!")
             return
-            
+
         if isinstance(error, commands.BotMissingPermissions):
             perms = ", ".join(error.missing_permissions)
             await ctx.send(f"❌ Bot cần quyền {perms} để thực hiện lệnh này!")
             return
-            
+
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.send(f"❌ Thiếu tham số: {error.param.name}")
             return
-            
+
         if isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"⏳ Vui lòng đợi {error.retry_after:.1f}s để dùng lại lệnh này!")
+            await ctx.send(
+                f"⏳ Vui lòng đợi {error.retry_after:.1f}s để dùng lại lệnh này!"
+            )
             return
-        
+
         if isinstance(error, commands.DisabledCommand):
             await ctx.send("❌ Lệnh này đã bị vô hiệu hóa")
             return
-            
+
         if isinstance(error, commands.NoPrivateMessage):
             await ctx.send("❌ Lệnh này chỉ có thể dùng trong server")
             return
@@ -81,7 +84,10 @@ class ErrorHandler(commands.Cog):
 
         # Log lỗi không xác định
         self.logger.error(f"Lỗi trong lệnh {ctx.command}:")
-        self.logger.error("".join(traceback.format_exception(type(error), error, error.__traceback__)))
+        self.logger.error(
+            "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        )
+
 
 async def setup(bot):
     await bot.add_cog(ErrorHandler(bot))

@@ -1,16 +1,16 @@
 """Timeout command"""
 
+from datetime import timedelta
+
 import discord
 from discord import app_commands
-from discord.ext import commands
-from datetime import timedelta
-import logging
-from utils.embeds import success_embed, error_embed, warning_embed
-from utils.views import ConfirmView
-from utils.constants import COMMAND_COOLDOWNS
-from utils.error_handler import validate_number_range, ValidationError
-from .base import BaseModerationCog, require_guild_permissions
 
+from utils.constants import COMMAND_COOLDOWNS
+from utils.embeds import error_embed, success_embed, warning_embed
+from utils.error_handler import ValidationError, validate_number_range
+from utils.views import ConfirmView
+
+from .base import BaseModerationCog, require_guild_permissions
 
 TIMEOUT_REASONS = [
     "Spam nhẹ",
@@ -27,38 +27,36 @@ async def timeout_reason_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     """Autocomplete cho timeout reason"""
     filtered = [r for r in TIMEOUT_REASONS if current.lower() in r.lower()]
-    return [
-        app_commands.Choice(name=reason, value=reason)
-        for reason in filtered[:25]
-    ]
+    return [app_commands.Choice(name=reason, value=reason) for reason in filtered[:25]]
 
 
 class TimeoutCommand(BaseModerationCog):
     """Timeout command cog"""
-    
+
     def __init__(self, bot):
         super().__init__(bot)
-    
+
     @app_commands.command(
-        name="timeout",
-        description="⏱️ Timeout member tạm thời (1 phút - 7 ngày)"
+        name="timeout", description="⏱️ Timeout member tạm thời (1 phút - 7 ngày)"
     )
     @app_commands.describe(
         member="Member cần timeout",
         duration="Thời gian timeout (phút)",
-        reason="Lý do timeout"
+        reason="Lý do timeout",
     )
     @app_commands.autocomplete(reason=timeout_reason_autocomplete)
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
     @require_guild_permissions(moderate_members=True)
-    @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['timeout'], key=lambda i: i.user.id)
+    @app_commands.checks.cooldown(
+        1, COMMAND_COOLDOWNS["timeout"], key=lambda i: i.user.id
+    )
     async def timeout(
         self,
         interaction: discord.Interaction,
         member: discord.Member,
         duration: int,
-        reason: str = "Không có lý do"
+        reason: str = "Không có lý do",
     ):
         """Timeout member"""
         try:
@@ -67,16 +65,21 @@ class TimeoutCommand(BaseModerationCog):
             if not is_valid:
                 await self.send_error(interaction, error_msg or "Invalid target")
                 return
-            
+
             # Validate hierarchy
-            is_valid, error_msg = await self.validate_hierarchy(interaction, member, "timeout member này")
+            is_valid, error_msg = await self.validate_hierarchy(
+                interaction, member, "timeout member này"
+            )
             if not is_valid:
-                await self.send_error(interaction, error_msg or "Hierarchy check failed")
+                await self.send_error(
+                    interaction, error_msg or "Hierarchy check failed"
+                )
                 return
-            
-            # Validate duration (1-10080 phút = 7 ngày)
-            validate_number_range(duration, 1, 10080, "Thời gian timeout (phút)")
-            
+
+            duration = validate_number_range(
+                duration, 1, 10080, "Thời gian timeout (phút)"
+            )
+
             # Xác nhận
             view = ConfirmView(interaction.user)
             await interaction.response.send_message(
@@ -84,27 +87,28 @@ class TimeoutCommand(BaseModerationCog):
                     "Xác nhận timeout",
                     f"Bạn có chắc muốn timeout {member.mention}?\n"
                     f"**Thời gian:** {duration} phút\n"
-                    f"**Lý do:** {reason}"
+                    f"**Lý do:** {reason}",
                 ),
                 view=view,
-                ephemeral=True
+                ephemeral=True,
             )
-            
+
             await view.wait()
-            
+
             if not view.value:
                 await interaction.edit_original_response(
-                    embed=error_embed("Đã hủy", "Đã hủy thao tác timeout."),
-                    view=None
+                    embed=error_embed("Đã hủy", "Đã hủy thao tác timeout."), view=None
                 )
                 return
-            
+
             # Thực hiện timeout
             timeout_until = timedelta(minutes=duration)
             await member.timeout(timeout_until, reason=f"{interaction.user}: {reason}")
-            
-            self.logger.info(f"{interaction.user} timed out {member} for {duration}m - Reason: {reason}")
-            
+
+            self.logger.info(
+                f"{interaction.user} timed out {member} for {duration}m - Reason: {reason}"
+            )
+
             # Log moderation action
             if interaction.guild and isinstance(interaction.user, discord.Member):
                 await self.log_moderation_action(
@@ -113,21 +117,23 @@ class TimeoutCommand(BaseModerationCog):
                     "timeout",
                     member,
                     reason,
-                    f"Duration: {duration} minutes"
+                    f"Duration: {duration} minutes",
                 )
-            
+
             await interaction.edit_original_response(
                 embed=success_embed(
                     "Đã timeout",
-                    f"{member.mention} đã bị timeout {duration} phút.\n**Lý do:** {reason}"
+                    f"{member.mention} đã bị timeout {duration} phút.\n**Lý do:** {reason}",
                 ),
-                view=None
+                view=None,
             )
         except ValidationError as e:
             await self.send_error(interaction, e.user_message)
         except Exception as e:
             self.logger.error(f"Error in timeout command: {e}", exc_info=True)
-            await self.safe_error_response(interaction, "Lỗi", f"Không thể timeout: {str(e)}")
+            await self.safe_error_response(
+                interaction, "Lỗi", "Không thể thực hiện timeout do lỗi hệ thống hoặc thiếu quyền."
+            )
 
 
 async def setup(bot):

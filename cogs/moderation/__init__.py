@@ -1,21 +1,24 @@
 """Moderation module - Các lệnh quản lý server"""
 
-from .base import BaseModerationCog
-from .kick import KickCommand
 from .ban import BanCommand
-from .timeout import TimeoutCommand
 from .clear import ClearCommand
-from .warn import WarnCommand
+from .kick import KickCommand
 from .softban import SoftbanCommand
 from .temprole import TempRoleCommand
+from .timeout import TimeoutCommand
+from .warn import WarnCommand
 
 
 async def setup(bot):
-	"""Load all moderation commands"""
-	await bot.add_cog(KickCommand(bot))
-	await bot.add_cog(BanCommand(bot))
-	await bot.add_cog(TimeoutCommand(bot))
-	await bot.add_cog(ClearCommand(bot))
-	await bot.add_cog(WarnCommand(bot))
-	await bot.add_cog(SoftbanCommand(bot))
-	await bot.add_cog(TempRoleCommand(bot))
+    """Load all moderation commands"""
+    for cog_cls in (
+        KickCommand,
+        BanCommand,
+        TimeoutCommand,
+        ClearCommand,
+        WarnCommand,
+        SoftbanCommand,
+        TempRoleCommand,
+    ):
+        if bot.get_cog(cog_cls.__name__) is None:
+            await bot.add_cog(cog_cls(bot))

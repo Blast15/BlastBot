@@ -105,27 +105,20 @@ bot.db.get_cache_stats()            # thống kê cache
 
 Lệnh được tổ chức thành cogs trong `cogs/` và **tự động được load** khi khởi động. Các moderation cog kế thừa `BaseModerationCog` để dùng chung logic validate quyền, hierarchy và logging.
 
-**Thêm lệnh mới** — tạo file cog trong thư mục phù hợp:
+**Thêm lệnh mới** — nếu tạo domain package mới `cogs/foo/__init__.py`, bot sẽ tự động phát hiện và load package. Nếu thêm cog mới vào domain hiện có, import và đăng ký cog trong `cogs/<domain>/__init__.py`:
 
 ```python
-# cogs/utilities/example.py
-import discord
-from discord import app_commands
-from discord.ext import commands
+# cogs/utilities/__init__.py
+from .example import Example
+from .feedback import Feedback
+from .roles import RolesCommand
 
-class Example(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    @app_commands.command(name="example")
-    async def example(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Hello!")
 
 async def setup(bot):
-    await bot.add_cog(Example(bot))
+    for cog_cls in (RolesCommand, Feedback, Example):
+        if bot.get_cog(cog_cls.__name__) is None:
+            await bot.add_cog(cog_cls(bot))
 ```
-
-Cog sẽ được load tự động ở lần khởi động sau.
 
 **Chất lượng code** (cần `pip install -e ".[dev]"`):
 

@@ -2,14 +2,13 @@
 
 import discord
 from discord import app_commands
-from discord.ext import commands
-import logging
-from utils.embeds import success_embed, error_embed, warning_embed
-from utils.views import ConfirmView
-from utils.constants import COMMAND_COOLDOWNS
-from utils.error_handler import validate_number_range, ValidationError
-from .base import BaseModerationCog, require_guild_permissions
 
+from utils.constants import COMMAND_COOLDOWNS
+from utils.embeds import error_embed, success_embed, warning_embed
+from utils.error_handler import ValidationError, validate_number_range
+from utils.views import ConfirmView
+
+from .base import BaseModerationCog, require_guild_permissions
 
 BAN_REASONS = [
     "Vi phạm nghiêm trọng",
@@ -27,38 +26,35 @@ async def ban_reason_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     """Autocomplete cho ban reason"""
     filtered = [r for r in BAN_REASONS if current.lower() in r.lower()]
-    return [
-        app_commands.Choice(name=reason, value=reason)
-        for reason in filtered[:25]
-    ]
+    return [app_commands.Choice(name=reason, value=reason) for reason in filtered[:25]]
 
 
 class BanCommand(BaseModerationCog):
     """Ban command cog"""
-    
+
     def __init__(self, bot):
         super().__init__(bot)
-    
+
     @app_commands.command(
         name="ban",
-        description="🔨 Ban member khỏi server vĩnh viễn (không thể join lại)"
+        description="🔨 Ban member khỏi server vĩnh viễn (không thể join lại)",
     )
     @app_commands.describe(
         member="Member cần ban",
         reason="Lý do ban",
-        delete_messages="Xóa tin nhắn trong bao nhiêu ngày (0-7)"
+        delete_messages="Xóa tin nhắn trong bao nhiêu ngày (0-7)",
     )
     @app_commands.autocomplete(reason=ban_reason_autocomplete)
     @app_commands.guild_only()
     @app_commands.default_permissions(ban_members=True)
     @require_guild_permissions(ban_members=True)
-    @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS['ban'], key=lambda i: i.user.id)
+    @app_commands.checks.cooldown(1, COMMAND_COOLDOWNS["ban"], key=lambda i: i.user.id)
     async def ban(
         self,
         interaction: discord.Interaction,
         member: discord.Member,
         reason: str = "Không có lý do",
-        delete_messages: int = 0
+        delete_messages: int = 0,
     ):
         """Ban member khỏi server"""
         try:
@@ -67,17 +63,21 @@ class BanCommand(BaseModerationCog):
             if not is_valid:
                 await self.send_error(interaction, error_msg or "Invalid target")
                 return
-            
+
             # Validate hierarchy
-            is_valid, error_msg = await self.validate_hierarchy(interaction, member, "ban member này")
+            is_valid, error_msg = await self.validate_hierarchy(
+                interaction, member, "ban member này"
+            )
             if not is_valid:
-                await self.send_error(interaction, error_msg or "Hierarchy check failed")
+                await self.send_error(
+                    interaction, error_msg or "Hierarchy check failed"
+                )
                 return
-            
-            # Validate delete_messages
-            validate_number_range(delete_messages, 0, 7, "Số ngày xóa tin nhắn")
-            delete_messages = max(0, min(7, delete_messages))
-            
+
+            delete_messages = validate_number_range(
+                delete_messages, 0, 7, "Số ngày xóa tin nhắn"
+            )
+
             # Xác nhận
             view = ConfirmView(interaction.user)
             await interaction.response.send_message(
@@ -85,29 +85,28 @@ class BanCommand(BaseModerationCog):
                     "Xác nhận ban",
                     f"Bạn có chắc muốn ban {member.mention}?\n"
                     f"**Lý do:** {reason}\n"
-                    f"**Xóa tin nhắn:** {delete_messages} ngày"
+                    f"**Xóa tin nhắn:** {delete_messages} ngày",
                 ),
                 view=view,
-                ephemeral=True
+                ephemeral=True,
             )
-            
+
             await view.wait()
-            
+
             if not view.value:
                 await interaction.edit_original_response(
-                    embed=error_embed("Đã hủy", "Đã hủy thao tác ban."),
-                    view=None
+                    embed=error_embed("Đã hủy", "Đã hủy thao tác ban."), view=None
                 )
                 return
-            
+
             # Thực hiện ban
             await member.ban(
                 reason=f"{interaction.user}: {reason}",
-                delete_message_seconds=delete_messages * 86400
+                delete_message_seconds=delete_messages * 86400,
             )
-            
+
             self.logger.info(f"{interaction.user} banned {member} - Reason: {reason}")
-            
+
             # Log moderation action
             if interaction.guild and isinstance(interaction.user, discord.Member):
                 await self.log_moderation_action(
@@ -116,21 +115,23 @@ class BanCommand(BaseModerationCog):
                     "ban",
                     member,
                     reason,
-                    f"Delete messages: {delete_messages} days"
+                    f"Delete messages: {delete_messages} days",
                 )
-            
+
             await interaction.edit_original_response(
                 embed=success_embed(
                     "Đã ban",
-                    f"{member.mention} đã được ban khỏi server.\n**Lý do:** {reason}"
+                    f"{member.mention} đã được ban khỏi server.\n**Lý do:** {reason}",
                 ),
-                view=None
+                view=None,
             )
         except ValidationError as e:
             await self.send_error(interaction, e.user_message)
         except Exception as e:
             self.logger.error(f"Error in ban command: {e}", exc_info=True)
-            await self.safe_error_response(interaction, "Lỗi", f"Không thể ban: {str(e)}")
+            await self.safe_error_response(
+                interaction, "Lỗi", "Không thể thực hiện ban do lỗi hệ thống hoặc thiếu quyền."
+            )
 
 
 async def setup(bot):

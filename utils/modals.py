@@ -1,75 +1,83 @@
 """Modal forms cho input phức tạp"""
 
-import discord
 import logging
-from typing import Optional
 
-logger = logging.getLogger('BlastBot.Modals')
+import discord
+
+logger = logging.getLogger("BlastBot.Modals")
 
 
 class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn"):
     """Modal để report user hoặc message"""
-    
+
     reason = discord.ui.TextInput(
         label="Lý do báo cáo",
         placeholder="Spam, vi phạm quy tắc, nội dung không phù hợp...",
         required=True,
         max_length=100,
-        style=discord.TextStyle.short
+        style=discord.TextStyle.short,
     )
-    
+
     details = discord.ui.TextInput(
         label="Chi tiết",
         placeholder="Mô tả chi tiết về vấn đề...",
         required=True,
         max_length=1000,
-        style=discord.TextStyle.paragraph
+        style=discord.TextStyle.paragraph,
     )
-    
+
     def __init__(
         self,
         target_id: int,
         target_type: str = "user",
-        message_context: Optional[dict] = None,
-        **kwargs
+        message_context: dict | None = None,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.target_id = target_id
         self.target_type = target_type  # "user" or "message"
         self.message_context = message_context or {}
-    
+
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Xử lý khi submit report"""
-        from utils.embeds import success_embed, create_embed
         from utils.constants import COLORS
-    
+        from utils.embeds import create_embed, success_embed
+
         description_lines = [
             f"**Người báo cáo:** {interaction.user.mention} (`{interaction.user.id}`)",
-            f"**Target ID:** `{self.target_id}`"
+            f"**Target ID:** `{self.target_id}`",
         ]
 
         if self.message_context:
-            author_id = self.message_context.get('author')
-            jump_url = self.message_context.get('jump_url')
+            author_id = self.message_context.get("author")
+            jump_url = self.message_context.get("jump_url")
             if author_id:
-                description_lines.append(f"**Tác giả tin nhắn:** <@{author_id}> (`{author_id}`)")
+                description_lines.append(
+                    f"**Tác giả tin nhắn:** <@{author_id}> (`{author_id}`)"
+                )
             if jump_url:
-                description_lines.append(f"**Link tin nhắn:** [Đi đến tin nhắn]({jump_url})")
+                description_lines.append(
+                    f"**Link tin nhắn:** [Đi đến tin nhắn]({jump_url})"
+                )
 
         # Tạo report embed
         report_embed = create_embed(
             title=f"📢 Báo cáo mới - {self.target_type.title()}",
             description="\n".join(description_lines),
-            color=COLORS['warning']
+            color=COLORS["warning"],
         )
         report_embed.add_field(name="Lý do", value=self.reason.value, inline=False)
         report_embed.add_field(name="Chi tiết", value=self.details.value, inline=False)
-        
-        if self.message_context and self.message_context.get('content'):
-            report_embed.add_field(name="Nội dung tin nhắn", value=self.message_context['content'], inline=False)
+
+        if self.message_context and self.message_context.get("content"):
+            report_embed.add_field(
+                name="Nội dung tin nhắn",
+                value=self.message_context["content"],
+                inline=False,
+            )
 
         report_embed.set_footer(text=f"Report ID: {interaction.id}")
-    
+
         # Gửi vào log channel nếu có (dùng connection dùng chung của bot)
         if interaction.guild:
             db = getattr(interaction.client, "db", None)
@@ -79,21 +87,25 @@ class ReportModal(discord.ui.Modal, title="Báo cáo người dùng/tin nhắn")
                     log_channel_id = config.get("log_channel_id")
                     if log_channel_id:
                         log_channel = interaction.guild.get_channel(log_channel_id)
-                        if isinstance(log_channel, (discord.TextChannel, discord.Thread)):
+                        if isinstance(
+                            log_channel, (discord.TextChannel, discord.Thread)
+                        ):
                             await log_channel.send(embed=report_embed)
                 except Exception as e:
                     logger.error(f"Failed to send report to log channel: {e}")
-    
+
         # Xác nhận với user
         await interaction.response.send_message(
             embed=success_embed(
                 "Báo cáo đã gửi",
-                "Cảm ơn bạn đã báo cáo. Đội ngũ quản lý sẽ xem xét sớm nhất."
+                "Cảm ơn bạn đã báo cáo. Đội ngũ quản lý sẽ xem xét sớm nhất.",
             ),
-            ephemeral=True
+            ephemeral=True,
         )
-    
-        logger.info(f"Report submitted by {interaction.user} for {self.target_type} {self.target_id}")
+
+        logger.info(
+            f"Report submitted by {interaction.user} for {self.target_type} {self.target_id}"
+        )
 
 
 class SuggestionModal(discord.ui.Modal, title="Gửi góp ý"):
@@ -124,12 +136,14 @@ class SuggestionModal(discord.ui.Modal, title="Gửi góp ý"):
         )
         suggestion_embed.set_footer(text=f"Suggestion ID: {interaction.id}")
 
-        view = SuggestionVotingView(getattr(self.bot, 'db', None))
+        view = SuggestionVotingView(getattr(self.bot, "db", None))
         await interaction.response.send_message(embed=suggestion_embed, view=view)
 
-        if interaction.guild and getattr(self.bot, 'db', None):
+        if interaction.guild and getattr(self.bot, "db", None):
             message = await interaction.original_response()
-            await self.bot.db.register_suggestion_message(interaction.guild.id, message.id)
+            await self.bot.db.register_suggestion_message(
+                interaction.guild.id, message.id
+            )
 
         logger.info(f"Suggestion posted by {interaction.user}: {self.suggestion.value}")
 
@@ -156,7 +170,7 @@ class SuggestionVotingView(discord.ui.View):
             )
             return
 
-        db = self.db or getattr(interaction.client, 'db', None)
+        db = self.db or getattr(interaction.client, "db", None)
         if db is None:
             await interaction.response.send_message(
                 "❌ Hệ thống vote tạm thời không khả dụng.", ephemeral=True
@@ -178,10 +192,24 @@ class SuggestionVotingView(discord.ui.View):
 
         await interaction.response.edit_message(view=self)
 
-    @discord.ui.button(label="👍 0", style=discord.ButtonStyle.success, emoji="👍", custom_id="suggestion_upvote")
-    async def upvote_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="👍 0",
+        style=discord.ButtonStyle.success,
+        emoji="👍",
+        custom_id="suggestion_upvote",
+    )
+    async def upvote_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._handle_vote(interaction, 1)
 
-    @discord.ui.button(label="👎 0", style=discord.ButtonStyle.danger, emoji="👎", custom_id="suggestion_downvote")
-    async def downvote_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="👎 0",
+        style=discord.ButtonStyle.danger,
+        emoji="👎",
+        custom_id="suggestion_downvote",
+    )
+    async def downvote_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._handle_vote(interaction, -1)

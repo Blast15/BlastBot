@@ -1,6 +1,10 @@
 import unittest
 
-from utils.error_handler import ValidationError, validate_number_range, validate_string_length
+from utils.error_handler import (
+    ValidationError,
+    validate_number_range,
+    validate_string_length,
+)
 
 
 class ValidationHelperTests(unittest.TestCase):

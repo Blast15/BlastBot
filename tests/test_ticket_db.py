@@ -1,5 +1,6 @@
-import unittest
 import os
+import unittest
+
 from utils.database import Database
 
 
@@ -19,12 +20,14 @@ class TicketDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_ticket_settings(self):
         guild_id = 1001
         settings = await self.db.get_ticket_settings(guild_id)
-        self.assertEqual(settings['ticket_limit'], 5)
+        self.assertEqual(settings["ticket_limit"], 5)
 
-        await self.db.update_ticket_settings(guild_id, ticket_limit=10, autoclose_hours=24)
+        await self.db.update_ticket_settings(
+            guild_id, ticket_limit=10, autoclose_hours=24
+        )
         updated = await self.db.get_ticket_settings(guild_id)
-        self.assertEqual(updated['ticket_limit'], 10)
-        self.assertEqual(updated['autoclose_hours'], 24)
+        self.assertEqual(updated["ticket_limit"], 10)
+        self.assertEqual(updated["autoclose_hours"], 24)
 
     async def test_ticket_counter_and_creation(self):
         guild_id = 2002
@@ -33,13 +36,15 @@ class TicketDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(num1, 1)
         self.assertEqual(num2, 2)
 
-        ticket_id = await self.db.create_ticket(guild_id, num1, channel_id=5555, owner_id=999, panel_id=None)
+        ticket_id = await self.db.create_ticket(
+            guild_id, num1, channel_id=5555, owner_id=999, panel_id=None
+        )
         self.assertGreater(ticket_id, 0)
 
         t_data = await self.db.get_ticket_by_channel(5555)
         self.assertIsNotNone(t_data)
-        self.assertEqual(t_data['number'], 1)
-        self.assertEqual(t_data['owner_id'], 999)
+        self.assertEqual(t_data["number"], 1)
+        self.assertEqual(t_data["owner_id"], 999)
 
         count = await self.db.count_open_tickets(guild_id, 999)
         self.assertEqual(count, 1)
@@ -50,7 +55,9 @@ class TicketDatabaseTests(unittest.IsolatedAsyncioTestCase):
         staff = await self.db.get_staff(guild_id)
         self.assertEqual(len(staff), 1)
 
-        await self.db.set_blacklist(guild_id, entity_id=777, is_role=False, blacklisted=True)
+        await self.db.set_blacklist(
+            guild_id, entity_id=777, is_role=False, blacklisted=True
+        )
         bl = await self.db.get_blacklist(guild_id)
         self.assertEqual(len(bl), 1)
 

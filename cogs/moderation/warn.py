@@ -1,6 +1,5 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from .base import BaseModerationCog, require_guild_permissions
 
@@ -26,13 +25,14 @@ class WarnCommand(BaseModerationCog):
 
         async with self.bot.db.transaction():
             count = await self.bot.db.add_warning(interaction.guild.id, member.id)
-            await self.log_moderation_action(
-                interaction.guild,
-                interaction.user,
-                "warn",
-                target=member,
-                reason=reason,
-            )
+
+        await self.log_moderation_action(
+            interaction.guild,
+            interaction.user,
+            "warn",
+            target=member,
+            reason=reason,
+        )
 
         await interaction.followup.send(
             f"✅ Đã cảnh cáo {member.mention}. Tổng cảnh cáo: **{count}**.",
