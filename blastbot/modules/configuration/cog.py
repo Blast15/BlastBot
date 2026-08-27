@@ -20,7 +20,9 @@ class ConfigurationCog(commands.Cog):
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
 
-    @config.command(name="logchannel", description="Đặt hoặc tắt channel nhận moderation/report log")
+    @config.command(
+        name="logchannel", description="Đặt hoặc tắt channel nhận moderation/report log"
+    )
     @require_guild_permissions(manage_guild=True)
     async def log_channel(
         self,
@@ -33,7 +35,9 @@ class ConfigurationCog(commands.Cog):
             interaction.guild_id, channel.id if channel else None
         )
         text = f"Log channel: {channel.mention}." if channel else "Đã tắt log channel."
-        await interaction.response.send_message(embed=success("Đã cập nhật", text), ephemeral=True)
+        await interaction.response.send_message(
+            embed=success("Đã cập nhật", text), ephemeral=True
+        )
 
     @config.command(name="view", description="Xem cấu hình chung")
     @require_guild_permissions(manage_guild=True)
@@ -41,14 +45,13 @@ class ConfigurationCog(commands.Cog):
         if interaction.guild_id is None:
             return
         data = await self.bot.app.guild_config.get(interaction.guild_id)
-        log_channel = f"<#{data.log_channel_id}>" if data.log_channel_id else "Chưa cấu hình"
-        legacy = (
-            f"<#{data.legacy_welcome_channel_id}> (legacy, không tự kích hoạt)"
-            if data.legacy_welcome_channel_id
-            else "Không có"
+        log_channel = (
+            f"<#{data.log_channel_id}>" if data.log_channel_id else "Chưa cấu hình"
         )
         await interaction.response.send_message(
-            embed=info("BlastBot config", f"**Log channel:** {log_channel}\n**Legacy welcome channel:** {legacy}"),
+            embed=info(
+                "Cấu hình BlastBot", f"**Kênh moderation/report:** {log_channel}"
+            ),
             ephemeral=True,
         )
 

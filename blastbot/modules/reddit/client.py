@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import quote
-from xml.etree import ElementTree
 
 import aiohttp
+from defusedxml import ElementTree
 
 from blastbot.core.config import Settings
 
@@ -44,7 +44,9 @@ def _http_url(value: object) -> str | None:
 
 def extract_image(data: dict[str, Any]) -> str | None:
     direct = _http_url(data.get("url_overridden_by_dest"))
-    if direct and direct.lower().split("?", 1)[0].endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+    if direct and direct.lower().split("?", 1)[0].endswith(
+        (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    ):
         return direct
 
     preview = data.get("preview")
@@ -76,7 +78,9 @@ def parse_post(data: dict[str, Any]) -> RedditPost | None:
     post_id = data.get("id")
     title = data.get("title")
     subreddit = data.get("subreddit")
-    if not all(isinstance(value, str) and value for value in (post_id, title, subreddit)):
+    if not all(
+        isinstance(value, str) and value for value in (post_id, title, subreddit)
+    ):
         return None
     created = data.get("created_utc")
     try:
@@ -155,7 +159,9 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
         if not raw_id or not title or not link:
             continue
         link_match = SUBREDDIT_FROM_LINK.search(link)
-        post_subreddit = link_match.group(1).lower() if link_match else subreddit.lower()
+        post_subreddit = (
+            link_match.group(1).lower() if link_match else subreddit.lower()
+        )
         author = (entry.findtext(f"{ATOM}author/{ATOM}name") or "[deleted]").strip()
         author = author.removeprefix("/u/").removeprefix("u/")
         content = entry.findtext(f"{ATOM}content") or ""
@@ -168,7 +174,8 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
                 author=author,
                 permalink=link,
                 created_at=_feed_datetime(
-                    entry.findtext(f"{ATOM}published") or entry.findtext(f"{ATOM}updated")
+                    entry.findtext(f"{ATOM}published")
+                    or entry.findtext(f"{ATOM}updated")
                 ),
                 text=None,
                 image_url=_feed_image(content),
@@ -211,7 +218,8 @@ class RedditClient:
         if self._session is None or self._session.closed:
             timeout = aiohttp.ClientTimeout(total=20)
             self._session = aiohttp.ClientSession(
-                timeout=timeout, headers={"User-Agent": self._settings.reddit_user_agent}
+                timeout=timeout,
+                headers={"User-Agent": self._settings.reddit_user_agent},
             )
         return self._session
 
@@ -235,7 +243,7 @@ class RedditClient:
                 payload = await response.json()
             token = payload.get("access_token")
             if not isinstance(token, str):
-                raise RuntimeError("Reddit did not return an access token")
+                raise TypeError("Reddit did not return an access token")
             expires_in = max(60, int(payload.get("expires_in", 3600)) - 60)
             self._token = token
             self._token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
@@ -252,7 +260,9 @@ class RedditClient:
         ) as response:
             if response.status == 429:
                 retry_after = response.headers.get("Retry-After", "unknown")
-                raise RuntimeError(f"Reddit rate limit reached; retry after {retry_after}s")
+                raise RuntimeError(
+                    f"Reddit rate limit reached; retry after {retry_after}s"
+                )
             response.raise_for_status()
             payload = await response.json()
         children = payload.get("data", {}).get("children", [])
@@ -276,9 +286,13 @@ class RedditClient:
                 continue
         return 60.0
 
-    async def _newest_feed_path(self, path: str, fallback_subreddit: str, limit: int) -> list[RedditPost]:
+    async def _newest_feed_path(
+        self, path: str, fallback_subreddit: str, limit: int
+    ) -> list[RedditPost]:
         if not self._settings.reddit_keyless_fallback:
-            raise RuntimeError("Reddit OAuth credentials are missing and RSS fallback is disabled")
+            raise RuntimeError(
+                "Reddit OAuth credentials are missing and RSS fallback is disabled"
+            )
         async with self._keyless_lock:
             for attempt in range(2):
                 now = time.monotonic()
@@ -301,7 +315,10 @@ class RedditClient:
                         delay = self._rate_limit_delay(response.headers) + 1.0
                         self._keyless_blocked_until = time.monotonic() + delay
                         if attempt == 0:
-                            logger.warning("Reddit RSS rate limited; retrying in %.0f seconds", delay)
+                            logger.warning(
+                                "Reddit RSS rate limited; retrying in %.0f seconds",
+                                delay,
+                            )
                             continue
                         raise RuntimeError(
                             f"Reddit RSS rate limit persisted after retry ({delay:.0f}s)"
@@ -311,8 +328,9 @@ class RedditClient:
                     remaining = response.headers.get("x-ratelimit-remaining")
                     try:
                         if remaining is not None and float(remaining) < 1.0:
-                            self._keyless_blocked_until = time.monotonic() + self._rate_limit_delay(
-                                response.headers
+                            self._keyless_blocked_until = (
+                                time.monotonic()
+                                + self._rate_limit_delay(response.headers)
                             )
                     except ValueError:
                         pass
@@ -322,7 +340,9 @@ class RedditClient:
     async def _newest_feed(self, subreddit: str, limit: int) -> list[RedditPost]:
         return await self._newest_feed_path(quote(subreddit, safe=""), subreddit, limit)
 
-    async def newest_many(self, subreddits: list[str], *, limit: int = 100) -> dict[str, list[RedditPost]]:
+    async def newest_many(
+        self, subreddits: list[str], *, limit: int = 100
+    ) -> dict[str, list[RedditPost]]:
         names = list(dict.fromkeys(name.lower() for name in subreddits))
         grouped = {name: [] for name in names}
         if not names:

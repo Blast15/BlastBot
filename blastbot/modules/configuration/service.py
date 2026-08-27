@@ -9,7 +9,6 @@ from blastbot.modules.configuration.repository import GuildConfigRepository
 class GuildConfigData:
     guild_id: int
     log_channel_id: int | None
-    legacy_welcome_channel_id: int | None
 
 
 class GuildConfigService:
@@ -21,7 +20,6 @@ class GuildConfigService:
         return GuildConfigData(
             guild_id=guild_id,
             log_channel_id=row.log_channel_id if row else None,
-            legacy_welcome_channel_id=row.welcome_channel_id if row else None,
         )
 
     async def set_log_channel(self, guild_id: int, channel_id: int | None) -> None:

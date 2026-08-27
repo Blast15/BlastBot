@@ -66,12 +66,16 @@ class TicketRepository:
         async with self._database.session() as session, session.begin():
             dialect_name = session.get_bind().dialect.name
             if dialect_name == "sqlite":
-                ensure_settings = sqlite_insert(TicketSettings).values(guild_id=guild_id)
+                ensure_settings = sqlite_insert(TicketSettings).values(
+                    guild_id=guild_id
+                )
                 ensure_settings = ensure_settings.on_conflict_do_nothing(
                     index_elements=[TicketSettings.guild_id]
                 )
             elif dialect_name == "postgresql":
-                ensure_settings = postgresql_insert(TicketSettings).values(guild_id=guild_id)
+                ensure_settings = postgresql_insert(TicketSettings).values(
+                    guild_id=guild_id
+                )
                 ensure_settings = ensure_settings.on_conflict_do_nothing(
                     index_elements=[TicketSettings.guild_id]
                 )
@@ -127,18 +131,24 @@ class TicketRepository:
 
     async def get_ticket_by_channel(self, channel_id: int) -> Ticket | None:
         async with self._database.session() as session:
-            return await session.scalar(select(Ticket).where(Ticket.channel_id == channel_id))
+            return await session.scalar(
+                select(Ticket).where(Ticket.channel_id == channel_id)
+            )
 
     async def transfer_owner(self, channel_id: int, owner_id: int) -> None:
         async with self._database.session() as session, session.begin():
             await session.execute(
-                update(Ticket).where(Ticket.channel_id == channel_id).values(owner_id=owner_id)
+                update(Ticket)
+                .where(Ticket.channel_id == channel_id)
+                .values(owner_id=owner_id)
             )
 
     async def set_claim(self, channel_id: int, staff_id: int | None) -> None:
         async with self._database.session() as session, session.begin():
             await session.execute(
-                update(Ticket).where(Ticket.channel_id == channel_id).values(claimed_by=staff_id)
+                update(Ticket)
+                .where(Ticket.channel_id == channel_id)
+                .values(claimed_by=staff_id)
             )
 
     async def close_ticket(self, channel_id: int, reason: str | None) -> bool:
@@ -172,7 +182,8 @@ class TicketRepository:
             return [
                 ticket
                 for ticket, hours in rows.all()
-                if ensure_utc(ticket.last_message_time) + timedelta(hours=hours) <= ensure_utc(now)
+                if ensure_utc(ticket.last_message_time) + timedelta(hours=hours)
+                <= ensure_utc(now)
             ]
 
     async def exclude_autoclose(self, channel_id: int) -> None:
@@ -183,7 +194,9 @@ class TicketRepository:
                 .values(excluded_autoclose=True)
             )
 
-    async def add_staff(self, guild_id: int, entity_id: int, is_role: bool, type_: str) -> None:
+    async def add_staff(
+        self, guild_id: int, entity_id: int, is_role: bool, type_: str
+    ) -> None:
         async with self._database.session() as session, session.begin():
             key = (guild_id, entity_id, type_)
             row = await session.get(TicketStaff, key)
@@ -212,7 +225,9 @@ class TicketRepository:
     async def staff(self, guild_id: int) -> list[TicketStaff]:
         async with self._database.session() as session:
             return list(
-                await session.scalars(select(TicketStaff).where(TicketStaff.guild_id == guild_id))
+                await session.scalars(
+                    select(TicketStaff).where(TicketStaff.guild_id == guild_id)
+                )
             )
 
     async def blacklist(self, guild_id: int) -> list[TicketBlacklist]:
@@ -223,7 +238,9 @@ class TicketRepository:
                 )
             )
 
-    async def toggle_blacklist(self, guild_id: int, entity_id: int, is_role: bool) -> bool:
+    async def toggle_blacklist(
+        self, guild_id: int, entity_id: int, is_role: bool
+    ) -> bool:
         async with self._database.session() as session, session.begin():
             row = await session.get(TicketBlacklist, (guild_id, entity_id))
             if row:
@@ -263,18 +280,23 @@ class TicketRepository:
             await session.flush()
             return panel.panel_id
 
-    async def get_panel(self, panel_id: int, guild_id: int | None = None) -> TicketPanel | None:
+    async def get_panel(
+        self, panel_id: int, guild_id: int | None = None
+    ) -> TicketPanel | None:
         async with self._database.session() as session:
             panel = await session.get(TicketPanel, panel_id)
             if panel is None or (guild_id is not None and panel.guild_id != guild_id):
                 return None
             return panel
 
-    async def panel_by_message(self, guild_id: int, message_id: int) -> TicketPanel | None:
+    async def panel_by_message(
+        self, guild_id: int, message_id: int
+    ) -> TicketPanel | None:
         async with self._database.session() as session:
             return await session.scalar(
                 select(TicketPanel).where(
-                    TicketPanel.guild_id == guild_id, TicketPanel.message_id == message_id
+                    TicketPanel.guild_id == guild_id,
+                    TicketPanel.message_id == message_id,
                 )
             )
 
@@ -305,7 +327,11 @@ class TicketRepository:
         self, guild_id: int, panel_id: int, **values: str | int | None
     ) -> bool:
         allowed = {"title", "content", "button_label", "welcome_message", "color"}
-        updates = {key: value for key, value in values.items() if key in allowed and value is not None}
+        updates = {
+            key: value
+            for key, value in values.items()
+            if key in allowed and value is not None
+        }
         if not updates:
             return False
         async with self._database.session() as session, session.begin():
@@ -339,14 +365,17 @@ class TicketRepository:
         async with self._database.session() as session, session.begin():
             await session.execute(
                 delete(TicketMember).where(
-                    TicketMember.channel_id == channel_id, TicketMember.user_id == user_id
+                    TicketMember.channel_id == channel_id,
+                    TicketMember.user_id == user_id,
                 )
             )
 
     async def members(self, channel_id: int) -> list[int]:
         async with self._database.session() as session:
             rows = await session.scalars(
-                select(TicketMember.user_id).where(TicketMember.channel_id == channel_id)
+                select(TicketMember.user_id).where(
+                    TicketMember.channel_id == channel_id
+                )
             )
             return list(rows)
 
@@ -356,7 +385,9 @@ class TicketRepository:
             if row:
                 row.content = content
             else:
-                session.add(TicketTag(guild_id=guild_id, tag_id=tag_id, content=content))
+                session.add(
+                    TicketTag(guild_id=guild_id, tag_id=tag_id, content=content)
+                )
 
     async def delete_tag(self, guild_id: int, tag_id: str) -> bool:
         async with self._database.session() as session, session.begin():

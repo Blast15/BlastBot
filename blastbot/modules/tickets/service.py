@@ -43,7 +43,9 @@ class TicketService:
     @staticmethod
     def panel_data(panel: TicketPanel) -> PanelData:
         try:
-            mentions = tuple(int(value) for value in json.loads(panel.mention_on_open or "[]"))
+            mentions = tuple(
+                int(value) for value in json.loads(panel.mention_on_open or "[]")
+            )
         except (TypeError, ValueError, json.JSONDecodeError):
             mentions = ()
         return PanelData(
@@ -65,7 +67,9 @@ class TicketService:
         return await self.repository.get_settings(guild_id)
 
     async def set_transcript_channel(self, guild_id: int, channel_id: int) -> None:
-        await self.repository.update_settings(guild_id, transcript_channel_id=channel_id)
+        await self.repository.update_settings(
+            guild_id, transcript_channel_id=channel_id
+        )
 
     async def set_limit(self, guild_id: int, amount: int) -> int:
         # Legacy behavior clamps rather than rejects out-of-range values.
@@ -84,7 +88,9 @@ class TicketService:
             raise ValidationError("invalid claim mode", "Claim mode không hợp lệ.")
         await self.repository.update_settings(guild_id, claim_mode=mode)
 
-    async def reserve(self, guild_id: int, owner_id: int, panel_id: int | None) -> TicketReservation:
+    async def reserve(
+        self, guild_id: int, owner_id: int, panel_id: int | None
+    ) -> TicketReservation:
         ticket = await self.repository.reserve_ticket(
             guild_id=guild_id, owner_id=owner_id, panel_id=panel_id
         )
@@ -129,12 +135,16 @@ class TicketService:
             raise ResourceNotFoundError("panel not found", "Không tìm thấy panel.")
         return self.panel_data(panel)
 
-    async def panel_for_message(self, guild_id: int, message_id: int) -> PanelData | None:
+    async def panel_for_message(
+        self, guild_id: int, message_id: int
+    ) -> PanelData | None:
         panel = await self.repository.panel_by_message(guild_id, message_id)
         return self.panel_data(panel) if panel else None
 
     async def panels(self, guild_id: int) -> list[PanelData]:
-        return [self.panel_data(panel) for panel in await self.repository.panels(guild_id)]
+        return [
+            self.panel_data(panel) for panel in await self.repository.panels(guild_id)
+        ]
 
     async def edit_panel(
         self,
@@ -150,12 +160,16 @@ class TicketService:
             panel_id,
             title=require_text(title, maximum=256) if title else None,
             content=require_text(content, maximum=4000) if content else None,
-            button_label=require_text(button_label, maximum=80) if button_label else None,
+            button_label=require_text(button_label, maximum=80)
+            if button_label
+            else None,
         )
 
     async def add_tag(self, guild_id: int, tag_id: str, content: str) -> str:
         normalized = normalize_tag_id(tag_id)
-        await self.repository.put_tag(guild_id, normalized, require_text(content, maximum=2000))
+        await self.repository.put_tag(
+            guild_id, normalized, require_text(content, maximum=2000)
+        )
         return normalized
 
     async def delete_tag(self, guild_id: int, tag_id: str) -> bool:

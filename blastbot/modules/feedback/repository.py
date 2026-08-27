@@ -16,7 +16,9 @@ class FeedbackRepository:
             if row is None:
                 session.add(SuggestionMessage(guild_id=guild_id, message_id=message_id))
 
-    async def toggle_vote(self, message_id: int, user_id: int, vote: int) -> tuple[int, int]:
+    async def toggle_vote(
+        self, message_id: int, user_id: int, vote: int
+    ) -> tuple[int, int]:
         async with self._database.session() as session, session.begin():
             row = await session.get(SuggestionVote, (message_id, user_id))
             if row and row.vote == vote:
@@ -24,7 +26,9 @@ class FeedbackRepository:
             elif row:
                 row.vote = vote
             else:
-                session.add(SuggestionVote(message_id=message_id, user_id=user_id, vote=vote))
+                session.add(
+                    SuggestionVote(message_id=message_id, user_id=user_id, vote=vote)
+                )
             await session.flush()
             counts = await session.execute(
                 select(SuggestionVote.vote, func.count())

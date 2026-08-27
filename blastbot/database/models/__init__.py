@@ -29,7 +29,6 @@ __all__ = [
     "SuggestionMessage",
     "SuggestionVote",
     "TempRole",
-    "UserState",
     "Ticket",
     "TicketBlacklist",
     "TicketMember",
@@ -37,4 +36,5 @@ __all__ = [
     "TicketSettings",
     "TicketStaff",
     "TicketTag",
+    "UserState",
 ]

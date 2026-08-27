@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blastbot.database.base import Base, utcnow
@@ -14,7 +22,9 @@ class GuildConfig(Base):
     guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     welcome_channel_id: Mapped[int | None] = mapped_column(BigInteger)
     log_channel_id: Mapped[int | None] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
 
 class UserState(Base):
@@ -36,7 +46,9 @@ class ModerationLog(Base):
     target_str: Mapped[str | None] = mapped_column(String(255))
     reason: Mapped[str | None] = mapped_column(Text)
     extra_json: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
 
 class TempRole(Base):
@@ -71,7 +83,9 @@ class RoleMenu(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger)
     role_ids: Mapped[str] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(String(32), default="toggle")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
 
 class RedditSubscription(Base):
@@ -86,4 +100,6 @@ class RedditSubscription(Base):
     subreddit: Mapped[str] = mapped_column(String(64), index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen_post_id: Mapped[str | None] = mapped_column(String(32))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )

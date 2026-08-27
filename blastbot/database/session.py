@@ -5,12 +5,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from blastbot.core.config import Settings
-from blastbot.database.base import Base
+
 # Import model modules so every table is registered in Base.metadata before create_all().
 from blastbot.database import models as _models  # noqa: F401
+from blastbot.database.base import Base
 
 
 class Database:

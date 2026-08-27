@@ -11,7 +11,12 @@ from blastbot.core.bot import BlastBot
 from blastbot.modules.moderation.service import ModerationRecord
 from blastbot.modules.moderation.ui import ConfirmView
 from blastbot.shared.embeds import error, info, success, warning
-from blastbot.shared.permissions import require_guild_permissions, validate_moderation_target
+from blastbot.shared.permissions import (
+    require_guild_permissions,
+    validate_member_manage,
+    validate_moderation_target,
+    validate_role_manage,
+)
 from blastbot.shared.responder import send_interaction
 
 logger = logging.getLogger(__name__)
@@ -66,11 +71,15 @@ class ModerationCog(commands.Cog):
         guild = interaction.guild
         actor = interaction.user
         if guild is None or not isinstance(actor, discord.Member):
-            await send_interaction(interaction, content="Lệnh này chỉ dùng trong server.", ephemeral=True)
+            await send_interaction(
+                interaction, content="Lệnh này chỉ dùng trong server.", ephemeral=True
+            )
             return False
         problem = validate_moderation_target(guild, actor, member)
         if problem:
-            await send_interaction(interaction, embed=error("Không thể thực hiện", problem), ephemeral=True)
+            await send_interaction(
+                interaction, embed=error("Không thể thực hiện", problem), ephemeral=True
+            )
             return False
         return True
 
@@ -100,7 +109,9 @@ class ModerationCog(commands.Cog):
     ) -> None:
         if interaction.guild is None:
             return
-        channel_id = await self.bot.app.moderation_repo.get_log_channel_id(interaction.guild.id)
+        channel_id = await self.bot.app.moderation_repo.get_log_channel_id(
+            interaction.guild.id
+        )
         channel = interaction.guild.get_channel(channel_id) if channel_id else None
         if isinstance(channel, (discord.TextChannel, discord.Thread)):
             embed = info(
@@ -122,7 +133,10 @@ class ModerationCog(commands.Cog):
     @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(reason=_reason_autocomplete)
     async def kick(
-        self, interaction: discord.Interaction, member: discord.Member, reason: str | None = None
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str | None = None,
     ) -> None:
         if not await self._validate_target(interaction, member):
             return
@@ -130,8 +144,12 @@ class ModerationCog(commands.Cog):
             interaction, "Xác nhận kick", f"Kick {member.mention} khỏi server?"
         ):
             return
-        await member.kick(reason=f"{reason or 'Không có lý do'} | by {interaction.user}")
-        await self.bot.app.moderation.record_action("KICK", self._record(interaction, member, reason))
+        await member.kick(
+            reason=f"{reason or 'Không có lý do'} | by {interaction.user}"
+        )
+        await self.bot.app.moderation.record_action(
+            "KICK", self._record(interaction, member, reason)
+        )
         await interaction.edit_original_response(
             embed=success("Đã kick", f"Đã kick {member.mention}."), view=None
         )
@@ -189,7 +207,10 @@ class ModerationCog(commands.Cog):
         reason: str | None = None,
         delete_messages: app_commands.Range[int, 1, 7] = 1,
     ) -> None:
-        if not await self._validate_target(interaction, member) or interaction.guild is None:
+        if (
+            not await self._validate_target(interaction, member)
+            or interaction.guild is None
+        ):
             return
         if not await self._confirm(
             interaction, "Xác nhận softban", f"Softban {member.mention}?"
@@ -209,7 +230,9 @@ class ModerationCog(commands.Cog):
         await interaction.edit_original_response(
             embed=success("Đã softban", f"Đã softban {member.mention}."), view=None
         )
-        await self._emit_log(interaction, action="SOFTBAN", target=member, reason=reason)
+        await self._emit_log(
+            interaction, action="SOFTBAN", target=member, reason=reason
+        )
 
     @app_commands.command(name="timeout", description="Timeout một thành viên")
     @app_commands.guild_only()
@@ -237,15 +260,23 @@ class ModerationCog(commands.Cog):
             reason=f"{reason or 'Không có lý do'} | by {interaction.user}",
         )
         await self.bot.app.moderation.record_action(
-            "TIMEOUT", self._record(interaction, member, reason), duration_minutes=int(duration)
+            "TIMEOUT",
+            self._record(interaction, member, reason),
+            duration_minutes=int(duration),
         )
         await interaction.edit_original_response(
-            embed=success("Đã timeout", f"Đã timeout {member.mention} trong {duration} phút."),
+            embed=success(
+                "Đã timeout", f"Đã timeout {member.mention} trong {duration} phút."
+            ),
             view=None,
         )
-        await self._emit_log(interaction, action="TIMEOUT", target=member, reason=reason)
+        await self._emit_log(
+            interaction, action="TIMEOUT", target=member, reason=reason
+        )
 
-    @app_commands.command(name="clear", description="Xóa tin nhắn gần đây, bỏ qua tin đã ghim")
+    @app_commands.command(
+        name="clear", description="Xóa tin nhắn gần đây, bỏ qua tin đã ghim"
+    )
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_messages=True)
     @require_guild_permissions(manage_messages=True)
@@ -256,11 +287,14 @@ class ModerationCog(commands.Cog):
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
-                embed=error("Không hỗ trợ", "Lệnh này cần text channel."), ephemeral=True
+                embed=error("Không hỗ trợ", "Lệnh này cần text channel."),
+                ephemeral=True,
             )
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        deleted = await channel.purge(limit=int(amount), check=lambda m: not m.pinned, bulk=True)
+        deleted = await channel.purge(
+            limit=int(amount), check=lambda m: not m.pinned, bulk=True
+        )
         record = ModerationRecord(
             guild_id=interaction.guild_id or 0,
             moderator_id=interaction.user.id,
@@ -268,9 +302,13 @@ class ModerationCog(commands.Cog):
             target_str=f"#{channel.name}",
             reason=None,
         )
-        await self.bot.app.moderation.record_action("CLEAR", record, deleted=len(deleted))
+        await self.bot.app.moderation.record_action(
+            "CLEAR", record, deleted=len(deleted)
+        )
         await interaction.followup.send(
-            embed=success("Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned)."),
+            embed=success(
+                "Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned)."
+            ),
             ephemeral=True,
         )
 
@@ -287,15 +325,21 @@ class ModerationCog(commands.Cog):
         duration: app_commands.Range[int, 1, 40320],
         reason: str | None = None,
     ) -> None:
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        if interaction.guild is None or not isinstance(
+            interaction.user, discord.Member
+        ):
             return
-        from blastbot.shared.permissions import validate_role_manage
-
-        problem = validate_role_manage(interaction.guild, interaction.user, role)
+        problem = validate_member_manage(interaction.guild, interaction.user, member)
+        if problem is None:
+            problem = validate_role_manage(interaction.guild, interaction.user, role)
         if problem:
-            await interaction.response.send_message(embed=error("Không thể cấp role", problem), ephemeral=True)
+            await interaction.response.send_message(
+                embed=error("Không thể cấp role", problem), ephemeral=True
+            )
             return
-        await member.add_roles(role, reason=f"Temporary role by {interaction.user}: {reason or 'N/A'}")
+        await member.add_roles(
+            role, reason=f"Temporary role by {interaction.user}: {reason or 'N/A'}"
+        )
         expires = await self.bot.app.moderation.add_temp_role(
             guild_id=interaction.guild.id,
             user_id=member.id,
@@ -321,13 +365,20 @@ class ModerationCog(commands.Cog):
     @require_guild_permissions(moderate_members=True)
     @app_commands.autocomplete(reason=_reason_autocomplete)
     async def warn(
-        self, interaction: discord.Interaction, member: discord.Member, reason: str | None = None
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str | None = None,
     ) -> None:
         if not await self._validate_target(interaction, member):
             return
-        count = await self.bot.app.moderation.warn(self._record(interaction, member, reason))
+        count = await self.bot.app.moderation.warn(
+            self._record(interaction, member, reason)
+        )
         await interaction.response.send_message(
-            embed=success("Đã cảnh cáo", f"{member.mention} hiện có **{count}** cảnh cáo."),
+            embed=success(
+                "Đã cảnh cáo", f"{member.mention} hiện có **{count}** cảnh cáo."
+            ),
             ephemeral=True,
         )
         await self._emit_log(interaction, action="WARN", target=member, reason=reason)
@@ -336,12 +387,15 @@ class ModerationCog(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
     @require_guild_permissions(moderate_members=True)
-    async def warnings(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def warnings(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
         if interaction.guild_id is None:
             return
         count = await self.bot.app.moderation.warnings(interaction.guild_id, member.id)
         await interaction.response.send_message(
-            embed=info("Cảnh cáo", f"{member.mention} có **{count}** cảnh cáo."), ephemeral=True
+            embed=info("Cảnh cáo", f"{member.mention} có **{count}** cảnh cáo."),
+            ephemeral=True,
         )
 
     @tasks.loop(minutes=1.0)
@@ -366,20 +420,29 @@ class ModerationCog(commands.Cog):
             except discord.Forbidden:
                 logger.warning(
                     "Cannot remove expired temp role",
-                    extra={"guild_id": guild.id, "user_id": member.id, "operation": "temp_role_cleanup"},
+                    extra={
+                        "guild_id": guild.id,
+                        "user_id": member.id,
+                        "operation": "temp_role_cleanup",
+                    },
                 )
                 continue
             except discord.HTTPException:
                 logger.exception("Discord API error removing temp role")
                 continue
-            await self.bot.app.moderation_repo.remove_temp_role(item.guild_id, item.user_id, item.role_id)
+            await self.bot.app.moderation_repo.remove_temp_role(
+                item.guild_id, item.user_id, item.role_id
+            )
 
     @temp_role_cleanup.error
     async def temp_role_cleanup_error(self, exception: BaseException) -> None:
         logger.exception(
             "Background task temp_role_cleanup failed",
             exc_info=exception,
-            extra={"operation": "temp_role_cleanup", "error_type": type(exception).__name__},
+            extra={
+                "operation": "temp_role_cleanup",
+                "error_type": type(exception).__name__,
+            },
         )
 
     @temp_role_cleanup.before_loop

@@ -8,108 +8,203 @@ from discord.ext import commands
 
 from blastbot import __version__
 from blastbot.core.bot import BlastBot
-from blastbot.shared.embeds import info
+from blastbot.shared.embeds import PRIMARY, error, info
 from blastbot.shared.ui import SafeView
 
+CATEGORY_NAMES = {
+    "Automation": "⚡ Tự động hóa",
+    "Configuration": "⚙️ Cấu hình",
+    "Feedback": "💡 Góp ý",
+    "Help": "📚 Trợ giúp",
+    "Moderation": "🛡️ Kiểm duyệt",
+    "Reddit": "📰 Reddit",
+    "Roles": "🎭 Role",
+    "Tickets": "🎫 Ticket",
+}
 
-def _qualified_name(command: app_commands.Command | app_commands.Group) -> str:
-    return command.qualified_name
+
+def _category(command: app_commands.Command[object, ..., object]) -> str:
+    binding = command.binding
+    return (
+        binding.__class__.__name__.removesuffix("Cog")
+        if binding is not None
+        else "Khác"
+    )
+
+
+def _footer(card: discord.Embed) -> discord.Embed:
+    card.set_footer(text=f"BlastBot v{__version__} • /help <lệnh> để xem chi tiết")
+    return card
+
+
+def _access_label(command: app_commands.Command[object, ..., object]) -> str:
+    if command.qualified_name.startswith("ticket "):
+        return "🎫 Ticket staff/owner"
+    parent_permissions = command.parent.default_permissions if command.parent else None
+    if command.default_permissions or parent_permissions:
+        return "🔒 Quản trị"
+    return "👤 Mọi thành viên"
+
+
+def _usage(command: app_commands.Command[object, ..., object]) -> str:
+    arguments = " ".join(
+        f"<{parameter.display_name}>"
+        if parameter.required
+        else f"[{parameter.display_name}]"
+        for parameter in command.parameters
+    )
+    return f"/{command.qualified_name}{f' {arguments}' if arguments else ''}"
+
+
+def category_embed(
+    category: str, commands_: list[app_commands.Command[object, ..., object]]
+) -> discord.Embed:
+    lines = [
+        f"`/{command.qualified_name}` · {_access_label(command)}\n"
+        f"↳ {command.description or 'Không có mô tả.'}"
+        for command in commands_
+    ]
+    return _footer(
+        discord.Embed(
+            title=CATEGORY_NAMES.get(category, category),
+            description="\n\n".join(lines),
+            color=PRIMARY,
+        )
+    )
 
 
 class HelpCategorySelect(discord.ui.Select):
-    def __init__(self, bot: BlastBot, categories: dict[str, list[str]]) -> None:
-        self.bot = bot
+    def __init__(
+        self,
+        categories: dict[str, list[app_commands.Command[object, ..., object]]],
+    ) -> None:
         self.categories = categories
-        options = [
-            discord.SelectOption(label=name, value=name, description=f"{len(items)} command")
-            for name, items in sorted(categories.items())[:25]
-        ]
-        super().__init__(placeholder="Chọn nhóm lệnh", options=options)
+        super().__init__(
+            placeholder="Chọn nhóm lệnh để xem chi tiết",
+            options=[
+                discord.SelectOption(
+                    label=CATEGORY_NAMES.get(name, name),
+                    value=name,
+                    description=f"{len(items)} lệnh",
+                )
+                for name, items in sorted(categories.items())
+            ],
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         category = self.values[0]
-        lines = self.categories.get(category, [])
         await interaction.response.edit_message(
-            embed=info(f"Help · {category}", "\n".join(f"`/{name}`" for name in lines)),
-            view=self.view,
+            embed=category_embed(category, self.categories[category]), view=self.view
         )
 
 
 class HelpView(SafeView):
-    def __init__(self, bot: BlastBot, categories: dict[str, list[str]]) -> None:
+    def __init__(
+        self,
+        categories: dict[str, list[app_commands.Command[object, ..., object]]],
+    ) -> None:
         super().__init__(timeout=180)
-        self.add_item(HelpCategorySelect(bot, categories))
+        self.add_item(HelpCategorySelect(categories))
 
 
 class HelpCog(commands.Cog):
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
 
-    def _commands(self) -> list[app_commands.Command | app_commands.Group]:
-        return sorted(self.bot.tree.get_commands(), key=_qualified_name)
+    def _commands(self) -> list[app_commands.Command[object, ..., object]]:
+        commands_: list[app_commands.Command[object, ..., object]] = []
+        for root in self.bot.tree.get_commands():
+            if isinstance(root, app_commands.ContextMenu):
+                continue
+            if isinstance(root, app_commands.Group):
+                commands_.extend(root.walk_commands())
+            elif isinstance(root, app_commands.Command):
+                commands_.append(root)
+        return sorted(commands_, key=lambda item: item.qualified_name)
 
-    @app_commands.command(name="help", description="Xem danh sách lệnh hoặc chi tiết một lệnh")
-    @app_commands.describe(command="Tên lệnh, ví dụ: ticket limit")
-    async def help(self, interaction: discord.Interaction, command: str | None = None) -> None:
+    def _categories(self) -> dict[str, list[app_commands.Command[object, ..., object]]]:
+        categories: dict[str, list[app_commands.Command[object, ..., object]]] = (
+            defaultdict(list)
+        )
+        for command in self._commands():
+            categories[_category(command)].append(command)
+        return dict(categories)
+
+    @app_commands.command(
+        name="help", description="Xem hướng dẫn và danh sách slash command"
+    )
+    @app_commands.describe(command="Tên lệnh, ví dụ: reddit add hoặc ticket limit")
+    async def help(
+        self, interaction: discord.Interaction, command: str | None = None
+    ) -> None:
         commands_ = self._commands()
         if command:
-            normalized = command.strip().lstrip("/").lower()
-            for item in commands_:
-                if item.qualified_name.lower() == normalized:
-                    description = item.description or "Không có mô tả."
-                    await interaction.response.send_message(
-                        embed=info(f"/{item.qualified_name}", description), ephemeral=True
-                    )
-                    return
-                if isinstance(item, app_commands.Group):
-                    for child in item.walk_commands():
-                        if child.qualified_name.lower() == normalized:
-                            await interaction.response.send_message(
-                                embed=info(f"/{child.qualified_name}", child.description or "Không có mô tả."),
-                                ephemeral=True,
-                            )
-                            return
-            await interaction.response.send_message(
-                embed=info("Không tìm thấy", f"Không tìm thấy command `/{normalized}`."), ephemeral=True
+            normalized = command.strip().lstrip("/").casefold()
+            selected = next(
+                (
+                    item
+                    for item in commands_
+                    if item.qualified_name.casefold() == normalized
+                ),
+                None,
             )
+            if selected is None:
+                await interaction.response.send_message(
+                    embed=error(
+                        "Không tìm thấy lệnh",
+                        f"Không có slash command `/{normalized}`. Chọn gợi ý khi nhập `/help`.",
+                    ),
+                    ephemeral=True,
+                )
+                return
+            card = info(
+                f"/{selected.qualified_name}", selected.description or "Không có mô tả."
+            )
+            card.add_field(
+                name="Cách dùng",
+                value=f"`{_usage(selected)}`",
+                inline=False,
+            )
+            card.add_field(
+                name="Quyền truy cập",
+                value=_access_label(selected),
+                inline=False,
+            )
+            await interaction.response.send_message(embed=_footer(card), ephemeral=True)
             return
 
-        categories: dict[str, list[str]] = defaultdict(list)
-        for item in commands_:
-            binding = getattr(item, "binding", None)
-            category = binding.__class__.__name__.removesuffix("Cog") if binding is not None else "Other"
-            if isinstance(item, app_commands.Group):
-                categories[category].extend(child.qualified_name for child in item.walk_commands())
-            else:
-                categories[category].append(item.qualified_name)
-
+        categories = self._categories()
         total = sum(len(items) for items in categories.values())
         summary = "\n".join(
-            f"**{name}** · {len(items)} lệnh" for name, items in sorted(categories.items())
+            f"{CATEGORY_NAMES.get(name, name)} · **{len(items)}**"
+            for name, items in sorted(categories.items())
         )
-        card = info("BlastBot Help", f"Có **{total}** lệnh.\n\n{summary}")
-        card.set_footer(text=f"BlastBot v{__version__}")
+        card = discord.Embed(
+            title="👋 Trung tâm trợ giúp BlastBot",
+            description=(
+                f"Có **{total} slash command**. Chọn một nhóm bên dưới để xem mô tả từng lệnh. "
+                "Lệnh quản trị chỉ chạy khi bạn và bot có đủ quyền.\n\n"
+                f"{summary}\n\n"
+                "**Context menu:** nhấp phải vào user hoặc tin nhắn → **Apps** để xem avatar, "
+                "bookmark hoặc gửi báo cáo."
+            ),
+            color=PRIMARY,
+        )
         await interaction.response.send_message(
-            embed=card,
-            view=HelpView(self.bot, categories),
-            ephemeral=True,
+            embed=_footer(card), view=HelpView(categories), ephemeral=True
         )
 
     @help.autocomplete("command")
     async def help_autocomplete(
         self, _: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        needle = current.lower().strip()
-        names: list[str] = []
-        for item in self._commands():
-            if isinstance(item, app_commands.Group):
-                names.extend(child.qualified_name for child in item.walk_commands())
-            else:
-                names.append(item.qualified_name)
+        needle = current.casefold().strip().lstrip("/")
         return [
-            app_commands.Choice(name=f"/{name}", value=name)
-            for name in names
-            if needle in name.lower()
+            app_commands.Choice(
+                name=f"/{item.qualified_name}", value=item.qualified_name
+            )
+            for item in self._commands()
+            if needle in item.qualified_name.casefold()
         ][:25]
 
 

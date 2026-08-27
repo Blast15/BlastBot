@@ -10,8 +10,14 @@ from blastbot.shared.embeds import error as error_embed
 logger = logging.getLogger(__name__)
 
 
-async def respond_ui_error(interaction: discord.Interaction, exception: Exception) -> None:
-    message = exception.user_message if isinstance(exception, UserFacingError) else "Đã xảy ra lỗi nội bộ. Vui lòng thử lại sau."
+async def respond_ui_error(
+    interaction: discord.Interaction, exception: Exception
+) -> None:
+    message = (
+        exception.user_message
+        if isinstance(exception, UserFacingError)
+        else "Đã xảy ra lỗi nội bộ. Vui lòng thử lại sau."
+    )
     if not isinstance(exception, UserFacingError):
         logger.exception(
             "Unhandled UI interaction error",
@@ -42,5 +48,7 @@ class SafeView(discord.ui.View):
 
 
 class SafeModal(discord.ui.Modal):
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
         await respond_ui_error(interaction, error)

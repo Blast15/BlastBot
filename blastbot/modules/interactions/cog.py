@@ -16,8 +16,12 @@ class ContextMenusCog(commands.Cog):
             app_commands.ContextMenu(name="Thông tin User", callback=self.user_info),
             app_commands.ContextMenu(name="Báo cáo User", callback=self.report_user),
             app_commands.ContextMenu(name="Xem Avatar", callback=self.avatar),
-            app_commands.ContextMenu(name="Báo cáo Message", callback=self.report_message),
-            app_commands.ContextMenu(name="Bookmark Message", callback=self.bookmark_message),
+            app_commands.ContextMenu(
+                name="Báo cáo Message", callback=self.report_message
+            ),
+            app_commands.ContextMenu(
+                name="Bookmark Message", callback=self.bookmark_message
+            ),
         )
         for menu in self._menus:
             self.bot.tree.add_command(menu)
@@ -26,7 +30,9 @@ class ContextMenusCog(commands.Cog):
         for menu in self._menus:
             self.bot.tree.remove_command(menu.name, type=menu.type)
 
-    async def user_info(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def user_info(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
         roles = [role.mention for role in reversed(member.roles[1:])]
         card = info(
             f"Thông tin {member}",
@@ -38,17 +44,23 @@ class ContextMenusCog(commands.Cog):
         card.set_thumbnail(url=member.display_avatar.url)
         await interaction.response.send_message(embed=card, ephemeral=True)
 
-    async def report_user(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def report_user(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
         await interaction.response.send_modal(
             ReportModal(self.bot.app.feedback, target_id=member.id, target_type="user")
         )
 
-    async def avatar(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def avatar(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
         card = info(f"Avatar · {member}", None)
         card.set_image(url=member.display_avatar.url)
         await interaction.response.send_message(embed=card, ephemeral=True)
 
-    async def report_message(self, interaction: discord.Interaction, message: discord.Message) -> None:
+    async def report_message(
+        self, interaction: discord.Interaction, message: discord.Message
+    ) -> None:
         await interaction.response.send_modal(
             ReportModal(
                 self.bot.app.feedback,
@@ -62,19 +74,29 @@ class ContextMenusCog(commands.Cog):
             )
         )
 
-    async def bookmark_message(self, interaction: discord.Interaction, message: discord.Message) -> None:
+    async def bookmark_message(
+        self, interaction: discord.Interaction, message: discord.Message
+    ) -> None:
         card = info(
             "Bookmark",
             f"Tác giả: {message.author.mention}\nChannel: {message.channel.mention}\n[Đi tới message]({message.jump_url})\n\n{message.content[:1500] or '*Không có nội dung text*'}",
         )
         try:
-            await interaction.user.send(embed=card, allowed_mentions=discord.AllowedMentions.none())
+            await interaction.user.send(
+                embed=card, allowed_mentions=discord.AllowedMentions.none()
+            )
         except discord.Forbidden:
             await interaction.response.send_message(
-                embed=info("Không thể gửi DM", "Hãy bật DM từ thành viên server rồi thử lại."), ephemeral=True
+                embed=info(
+                    "Không thể gửi DM", "Hãy bật DM từ thành viên server rồi thử lại."
+                ),
+                ephemeral=True,
             )
             return
-        await interaction.response.send_message(embed=success("Đã bookmark", "Đã gửi message vào DM của bạn."), ephemeral=True)
+        await interaction.response.send_message(
+            embed=success("Đã bookmark", "Đã gửi message vào DM của bạn."),
+            ephemeral=True,
+        )
 
 
 async def setup(bot: BlastBot) -> None:

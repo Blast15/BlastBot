@@ -64,7 +64,9 @@ class Ticket(Base):
     open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     close_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     close_reason: Mapped[str | None] = mapped_column(Text)
-    last_message_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_message_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     excluded_autoclose: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

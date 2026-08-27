@@ -3,6 +3,13 @@
 Các quy tắc trong file này áp dụng cho toàn bộ repository và phải được tuân thủ bởi bot hoặc
 agent thực hiện thay đổi source.
 
+## Ponytail bắt buộc
+
+Trước mọi tác vụ viết, sửa, refactor, review hoặc thiết kế code, phải đọc và tuân thủ
+`.agents/skills/ponytail/SKILL.md` ở mức `full`. Chỉ tắt hoặc đổi mức khi người dùng yêu cầu rõ
+ràng. Ponytail không được dùng để lược bỏ validation, bảo mật, xử lý lỗi ngăn mất dữ liệu hoặc
+phần việc người dùng đã yêu cầu.
+
 ## Version bắt buộc cho mọi commit
 
 BlastBot sử dụng Semantic Versioning theo định dạng `MAJOR.MINOR.PATCH`. Version chính thức duy

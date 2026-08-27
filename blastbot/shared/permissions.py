@@ -6,7 +6,6 @@ from typing import Any
 import discord
 from discord import app_commands
 
-
 CheckPredicate = Callable[[discord.Interaction], Coroutine[Any, Any, bool]]
 
 
@@ -57,4 +56,18 @@ def validate_role_manage(
     bot_member = guild.me
     if bot_member is None or role >= bot_member.top_role:
         return "Bot không thể quản lý role này do role hierarchy."
+    return None
+
+
+def validate_member_manage(
+    guild: discord.Guild, actor: discord.Member, target: discord.Member
+) -> str | None:
+    if target.id == guild.owner_id and actor.id != guild.owner_id:
+        return "Không thể quản lý role của chủ server."
+    if (
+        actor.id != guild.owner_id
+        and target.id != actor.id
+        and target.top_role >= actor.top_role
+    ):
+        return "Không thể quản lý role của thành viên có role cao hơn hoặc ngang bạn."
     return None

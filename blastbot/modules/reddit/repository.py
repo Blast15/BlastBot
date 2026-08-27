@@ -45,7 +45,9 @@ class RedditRepository:
             )
             return bool(result.rowcount)
 
-    async def set_enabled(self, guild_id: int, subscription_id: int, enabled: bool) -> bool:
+    async def set_enabled(
+        self, guild_id: int, subscription_id: int, enabled: bool
+    ) -> bool:
         async with self._database.session() as session, session.begin():
             row = await session.get(RedditSubscription, subscription_id)
             if row is None or row.guild_id != guild_id:

@@ -53,7 +53,9 @@ class RedditService:
                 "reddit subscription not found", "Không tìm thấy cấu hình Reddit này."
             )
 
-    async def set_enabled(self, guild_id: int, subscription_id: int, enabled: bool) -> None:
+    async def set_enabled(
+        self, guild_id: int, subscription_id: int, enabled: bool
+    ) -> None:
         if not await self.repository.set_enabled(guild_id, subscription_id, enabled):
             raise ResourceNotFoundError(
                 "reddit subscription not found", "Không tìm thấy cấu hình Reddit này."

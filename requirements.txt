@@ -3,3 +3,4 @@ SQLAlchemy==2.0.52
 aiosqlite==0.22.1
 pydantic-settings==2.15.0
 aiohttp==3.13.3
+defusedxml==0.7.1

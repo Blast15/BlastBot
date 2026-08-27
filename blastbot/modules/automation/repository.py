@@ -40,7 +40,9 @@ class AutomationRepository:
             row.message = message
             row.color = color
 
-    async def set_greeting_enabled(self, guild_id: int, kind: str, enabled: bool) -> None:
+    async def set_greeting_enabled(
+        self, guild_id: int, kind: str, enabled: bool
+    ) -> None:
         async with self._database.session() as session, session.begin():
             row = await session.get(Greeting, (guild_id, kind))
             if row is None:
@@ -72,7 +74,9 @@ class AutomationRepository:
     async def list_auto_messages(self, guild_id: int) -> list[AutoMessage]:
         async with self._database.session() as session:
             rows = await session.scalars(
-                select(AutoMessage).where(AutoMessage.guild_id == guild_id).order_by(AutoMessage.id)
+                select(AutoMessage)
+                .where(AutoMessage.guild_id == guild_id)
+                .order_by(AutoMessage.id)
             )
             return list(rows)
 
@@ -85,7 +89,9 @@ class AutomationRepository:
             )
             return bool(result.rowcount)
 
-    async def toggle_auto_message(self, guild_id: int, auto_id: int, enabled: bool) -> bool:
+    async def toggle_auto_message(
+        self, guild_id: int, auto_id: int, enabled: bool
+    ) -> bool:
         async with self._database.session() as session, session.begin():
             row = await session.get(AutoMessage, auto_id)
             if row is None or row.guild_id != guild_id:
@@ -95,12 +101,15 @@ class AutomationRepository:
 
     async def due_auto_messages(self, now: datetime) -> list[AutoMessage]:
         async with self._database.session() as session:
-            rows = await session.scalars(select(AutoMessage).where(AutoMessage.enabled.is_(True)))
+            rows = await session.scalars(
+                select(AutoMessage).where(AutoMessage.enabled.is_(True))
+            )
             return [
                 row
                 for row in rows
                 if row.last_sent is None
-                or ensure_utc(row.last_sent) + timedelta(minutes=row.interval_minutes) <= ensure_utc(now)
+                or ensure_utc(row.last_sent) + timedelta(minutes=row.interval_minutes)
+                <= ensure_utc(now)
             ]
 
     async def mark_sent(self, auto_id: int, now: datetime) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import ClassVar
 
 from blastbot.core.errors import ResourceNotFoundError, ValidationError
 from blastbot.database.models import RoleMenu
@@ -18,7 +19,7 @@ class RoleMenuData:
 
 
 class RoleMenuService:
-    MODES = {"toggle", "single"}
+    MODES: ClassVar[set[str]] = {"toggle", "single"}
 
     def __init__(self, repository: RoleMenuRepository) -> None:
         self.repository = repository
@@ -47,10 +48,14 @@ class RoleMenuService:
         mode: str,
     ) -> None:
         if mode not in self.MODES:
-            raise ValidationError("invalid role menu mode", "Mode role menu không hợp lệ.")
+            raise ValidationError(
+                "invalid role menu mode", "Mode role menu không hợp lệ."
+            )
         unique = tuple(dict.fromkeys(role_ids))
         if not 1 <= len(unique) <= 25:
-            raise ValidationError("invalid role count", "Role menu cần từ 1 đến 25 role.")
+            raise ValidationError(
+                "invalid role count", "Role menu cần từ 1 đến 25 role."
+            )
         await self.repository.save(
             message_id=message_id,
             guild_id=guild_id,
@@ -62,8 +67,12 @@ class RoleMenuService:
     async def get(self, message_id: int) -> RoleMenuData:
         row = await self.repository.get(message_id)
         if row is None:
-            raise ResourceNotFoundError("role menu not found", "Role menu không còn tồn tại.")
+            raise ResourceNotFoundError(
+                "role menu not found", "Role menu không còn tồn tại."
+            )
         return self._data(row)
 
     async def list_for_guild(self, guild_id: int) -> list[RoleMenuData]:
-        return [self._data(row) for row in await self.repository.list_for_guild(guild_id)]
+        return [
+            self._data(row) for row in await self.repository.list_for_guild(guild_id)
+        ]

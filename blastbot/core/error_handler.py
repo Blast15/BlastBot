@@ -4,7 +4,6 @@ import logging
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from blastbot.core.errors import UserFacingError
 from blastbot.shared.embeds import error as error_embed
@@ -27,6 +26,8 @@ async def handle_app_command_error(
         message = "Lệnh này chỉ dùng trong server."
     elif isinstance(original, UserFacingError):
         message = original.user_message
+    elif isinstance(original, discord.Forbidden):
+        message = "Bot thiếu quyền Discord cần thiết cho thao tác này. Hãy kiểm tra role và channel permissions."
     else:
         logger.exception(
             "Unhandled application command error",
@@ -46,20 +47,3 @@ async def handle_app_command_error(
         embed=error_embed("Không thể thực hiện", message),
         ephemeral=True,
     )
-
-
-class PrefixErrorHandler(commands.Cog):
-    def __init__(self, bot: commands.Bot) -> None:
-        self.bot = bot
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx: commands.Context[commands.Bot], error: Exception) -> None:
-        if isinstance(error, commands.CommandNotFound):
-            return
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"⏳ Thử lại sau {error.retry_after:.1f}s.")
-            return
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ Bạn không có đủ quyền.")
-            return
-        logger.exception("Unhandled prefix command error", exc_info=error)

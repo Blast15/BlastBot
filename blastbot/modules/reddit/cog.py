@@ -36,9 +36,15 @@ def reddit_embed(post: RedditPost) -> discord.Embed:
     )
     card.add_field(name="Cre", value=f"u/{post.author}", inline=True)
     card.add_field(
-        name="Thời gian đăng", value=f"<t:{int(post.created_at.timestamp())}:R>", inline=True
+        name="Thời gian đăng",
+        value=f"<t:{int(post.created_at.timestamp())}:R>",
+        inline=True,
     )
-    card.add_field(name="Liên kết", value=f"[Xem bài viết trên Reddit]({post.permalink})", inline=False)
+    card.add_field(
+        name="Liên kết",
+        value=f"[Xem bài viết trên Reddit]({post.permalink})",
+        inline=False,
+    )
     if post.flair:
         card.add_field(name="Chủ đề", value=post.flair[:1024], inline=True)
     if post.image_url:
@@ -60,7 +66,8 @@ class RedditCog(commands.Cog):
         self.client = RedditClient(bot.app.settings)
         self.poll.change_interval(seconds=bot.app.settings.reddit_poll_interval)
         self.configured = bool(
-            self.client.has_oauth_credentials or bot.app.settings.reddit_keyless_fallback
+            self.client.has_oauth_credentials
+            or bot.app.settings.reddit_keyless_fallback
         )
         if self.configured:
             self.poll.start()
@@ -75,7 +82,9 @@ class RedditCog(commands.Cog):
         await self.client.close()
 
     @reddit.command(name="add", description="Theo dõi bài mới của một cộng đồng Reddit")
-    @app_commands.describe(subreddit="Ví dụ: python hoặc r/python", channel="Kênh nhận bài mới")
+    @app_commands.describe(
+        subreddit="Ví dụ: python hoặc r/python", channel="Kênh nhận bài mới"
+    )
     @require_guild_permissions(manage_guild=True)
     async def add(
         self,
@@ -108,7 +117,9 @@ class RedditCog(commands.Cog):
                 ephemeral=True,
             )
             return
-        subscription_id = await self.bot.app.reddit.add(interaction.guild_id, channel.id, name)
+        subscription_id = await self.bot.app.reddit.add(
+            interaction.guild_id, channel.id, name
+        )
         if posts:
             await self.bot.app.reddit_repo.mark_seen(subscription_id, posts[0].id)
         await interaction.followup.send(
@@ -128,7 +139,8 @@ class RedditCog(commands.Cog):
         rows = await self.bot.app.reddit_repo.list_for_guild(interaction.guild_id)
         if not rows:
             await interaction.response.send_message(
-                embed=info("Theo dõi Reddit", "Chưa có cộng đồng nào được theo dõi."), ephemeral=True
+                embed=info("Theo dõi Reddit", "Chưa có cộng đồng nào được theo dõi."),
+                ephemeral=True,
             )
             return
         lines = [
@@ -141,12 +153,15 @@ class RedditCog(commands.Cog):
 
     @reddit.command(name="remove", description="Ngừng theo dõi một cộng đồng Reddit")
     @require_guild_permissions(manage_guild=True)
-    async def remove(self, interaction: discord.Interaction, subscription_id: int) -> None:
+    async def remove(
+        self, interaction: discord.Interaction, subscription_id: int
+    ) -> None:
         if interaction.guild_id is None:
             return
         await self.bot.app.reddit.remove(interaction.guild_id, subscription_id)
         await interaction.response.send_message(
-            embed=success("Đã ngừng theo dõi", f"Đã xóa cấu hình `{subscription_id}`."), ephemeral=True
+            embed=success("Đã ngừng theo dõi", f"Đã xóa cấu hình `{subscription_id}`."),
+            ephemeral=True,
         )
 
     @reddit.command(name="toggle", description="Bật hoặc tắt một cấu hình Reddit")
@@ -156,10 +171,13 @@ class RedditCog(commands.Cog):
     ) -> None:
         if interaction.guild_id is None:
             return
-        await self.bot.app.reddit.set_enabled(interaction.guild_id, subscription_id, enabled)
+        await self.bot.app.reddit.set_enabled(
+            interaction.guild_id, subscription_id, enabled
+        )
         await interaction.response.send_message(
             embed=success(
-                "Đã cập nhật", f"Cấu hình `{subscription_id}` đã được {'bật' if enabled else 'tắt'}."
+                "Đã cập nhật",
+                f"Cấu hình `{subscription_id}` đã được {'bật' if enabled else 'tắt'}.",
             ),
             ephemeral=True,
         )
@@ -167,7 +185,10 @@ class RedditCog(commands.Cog):
     @reddit.command(name="test", description="Gửi thử bài mới nhất vào kênh đã chọn")
     @require_guild_permissions(manage_guild=True)
     async def test(
-        self, interaction: discord.Interaction, subreddit: str, channel: discord.TextChannel
+        self,
+        interaction: discord.Interaction,
+        subreddit: str,
+        channel: discord.TextChannel,
     ) -> None:
         if not self.configured:
             await interaction.response.send_message(
@@ -184,19 +205,25 @@ class RedditCog(commands.Cog):
             posts = await self.client.newest(name, limit=1)
         except (aiohttp.ClientError, RuntimeError):
             await interaction.followup.send(
-                embed=error("Không thể lấy bài", "Không thể kết nối hoặc cộng đồng không tồn tại."),
+                embed=error(
+                    "Không thể lấy bài",
+                    "Không thể kết nối hoặc cộng đồng không tồn tại.",
+                ),
                 ephemeral=True,
             )
             return
         if not posts:
             await interaction.followup.send(
-                embed=error("Không có bài viết", f"Không tìm thấy bài công khai trong r/{name}."),
+                embed=error(
+                    "Không có bài viết", f"Không tìm thấy bài công khai trong r/{name}."
+                ),
                 ephemeral=True,
             )
             return
         await channel.send(embed=reddit_embed(posts[0]))
         await interaction.followup.send(
-            embed=success("Đã gửi thử", f"Embed đã được gửi vào {channel.mention}."), ephemeral=True
+            embed=success("Đã gửi thử", f"Embed đã được gửi vào {channel.mention}."),
+            ephemeral=True,
         )
 
     async def _deliver(self, row: RedditSubscription, posts: list[RedditPost]) -> None:
@@ -216,14 +243,19 @@ class RedditCog(commands.Cog):
         channel = guild.get_channel(row.channel_id) if guild else None
         if not isinstance(channel, discord.TextChannel):
             await self.bot.app.reddit_repo.set_enabled(row.guild_id, row.id, False)
-            logger.warning("Disabled Reddit feed with missing channel", extra={"guild_id": row.guild_id})
+            logger.warning(
+                "Disabled Reddit feed with missing channel",
+                extra={"guild_id": row.guild_id},
+            )
             return
         last_sent_id = row.last_seen_post_id
         for post in reversed(unseen[-10:]):
             try:
                 await channel.send(embed=reddit_embed(post))
             except discord.HTTPException:
-                logger.exception("Failed to send Reddit post", extra={"guild_id": row.guild_id})
+                logger.exception(
+                    "Failed to send Reddit post", extra={"guild_id": row.guild_id}
+                )
                 break
             last_sent_id = post.id
         if last_sent_id != row.last_seen_post_id:

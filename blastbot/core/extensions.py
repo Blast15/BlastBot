@@ -4,7 +4,10 @@ from blastbot.core.config import Settings
 
 
 def enabled_extensions(settings: Settings) -> tuple[str, ...]:
-    extensions: list[str] = ["blastbot.modules.help.cog", "blastbot.modules.configuration.cog"]
+    extensions: list[str] = [
+        "blastbot.modules.help.cog",
+        "blastbot.modules.configuration.cog",
+    ]
     if settings.feature_moderation:
         extensions.append("blastbot.modules.moderation.cog")
     if settings.feature_roles:

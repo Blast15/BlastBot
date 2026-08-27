@@ -20,13 +20,17 @@ class ConfirmView(SafeView):
         return True
 
     @discord.ui.button(label="Xác nhận", style=discord.ButtonStyle.danger, emoji="✅")
-    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+    async def confirm(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
         self.value = True
         await interaction.response.defer()
         self.stop()
 
     @discord.ui.button(label="Hủy", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+    async def cancel(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
         self.value = False
         await interaction.response.defer()
         self.stop()

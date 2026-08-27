@@ -5,7 +5,9 @@ import discord
 from blastbot.database.models import TicketStaff
 
 
-def member_matches_entity(member: discord.Member, entity_id: int, is_role: bool) -> bool:
+def member_matches_entity(
+    member: discord.Member, entity_id: int, is_role: bool
+) -> bool:
     if is_role:
         return any(role.id == entity_id for role in member.roles)
     return member.id == entity_id
@@ -14,15 +16,17 @@ def member_matches_entity(member: discord.Member, entity_id: int, is_role: bool)
 def is_ticket_staff(member: discord.Member, staff: list[TicketStaff]) -> bool:
     if member.guild_permissions.administrator or member.guild_permissions.manage_guild:
         return True
-    return any(member_matches_entity(member, item.entity_id, item.is_role) for item in staff)
+    return any(
+        member_matches_entity(member, item.entity_id, item.is_role) for item in staff
+    )
 
 
 def is_blacklisted(member: discord.Member, blacklist: list[object]) -> bool:
     return any(
         member_matches_entity(
             member,
-            int(getattr(item, "entity_id")),
-            bool(getattr(item, "is_role")),
+            int(item.entity_id),
+            bool(item.is_role),
         )
         for item in blacklist
     )

@@ -1,6 +1,6 @@
 # BlastBot
 
-**Phiên bản hiện tại: `v2.2.1`**
+**Phiên bản hiện tại: `v3.0.0`**
 
 BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
 
@@ -75,7 +75,6 @@ Sau đó chỉnh các giá trị cần thiết:
 
 ```env
 DISCORD_TOKEN=your_bot_token
-BOT_PREFIX=!
 OWNER_ID=
 DEV_GUILD_ID=
 DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
@@ -85,7 +84,7 @@ SYNC_MODE=none
 TRANSCRIPT_MESSAGE_LIMIT=2000
 REDDIT_CLIENT_ID=
 REDDIT_CLIENT_SECRET=
-REDDIT_USER_AGENT=BlastBot/1.0 (Discord Reddit monitor)
+REDDIT_USER_AGENT=BlastBot Discord Reddit monitor by Blast15
 REDDIT_POLL_INTERVAL=120
 REDDIT_KEYLESS_FALLBACK=true
 FEATURE_MODERATION=true
@@ -118,6 +117,36 @@ Các slash command dành cho người có quyền **Manage Server**:
 - `/reddit toggle subscription_id enabled`: tạm dừng hoặc bật lại.
 - `/reddit remove subscription_id`: xóa cấu hình.
 - `/reddit test subreddit channel`: xem thử embed của bài mới nhất.
+
+### Hệ thống lệnh
+
+- `/help`: trung tâm trợ giúp theo danh mục; dùng `/help command:<tên>` để xem chi tiết.
+- `/ticket ...`: thao tác trong ticket dành cho owner hoặc ticket staff.
+- `/ticket-config ...`: cấu hình ticket dành cho người có quyền Manage Server.
+- `/ticket-panel ...`: tạo, gửi và quản lý ticket panel.
+- `/ticket-tags ...`: quản lý quick tag.
+- Context menu nằm trong menu **Apps** khi nhấp phải vào user hoặc tin nhắn.
+
+BlastBot chỉ dùng slash command và context menu; prefix command cũ đã được loại bỏ.
+
+### Phân quyền và bảo mật
+
+- Các lệnh cấu hình yêu cầu **Manage Server**; moderation và role yêu cầu đúng Discord permission
+  tương ứng, đồng thời kiểm tra role hierarchy tại runtime.
+- Lệnh ticket thông thường kiểm tra owner/ticket staff từ database; cấu hình ticket chỉ dành cho
+  **Manage Server**.
+- Bot nên có các quyền: View Channels, Send Messages, Embed Links, Attach Files, Read Message
+  History và Use Application Commands. Chỉ cấp thêm Manage Channels/Messages, Manage Roles,
+  Kick, Ban hoặc Moderate Members khi bật module tương ứng.
+- Không cấp Administrator nếu không cần. Bot không xử lý prefix command và không yêu cầu Message
+  Content intent.
+- RSS Reddit được parse bằng `defusedxml`; mention từ nội dung tự động và report bị vô hiệu hóa.
+
+### Quy tắc phát triển Ponytail
+
+Project tích hợp skill Ponytail tại `.agents/skills/ponytail/SKILL.md`. Agent sửa code phải đọc
+skill này qua `AGENTS.md`: ưu tiên tái sử dụng, stdlib/native feature và diff tối thiểu, nhưng
+không được lược bỏ validation, bảo mật hoặc xử lý lỗi cần thiết.
 
 Khi vừa thêm một cộng đồng, bot lấy bài mới nhất làm mốc và không gửi lại bài cũ. Các bài xuất
 hiện sau đó được gửi theo thứ tự thời gian, gồm tiêu đề, tác giả, thời gian, link và ảnh lớn nếu

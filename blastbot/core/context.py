@@ -12,10 +12,10 @@ from blastbot.modules.feedback.repository import FeedbackRepository
 from blastbot.modules.feedback.service import FeedbackService
 from blastbot.modules.moderation.repository import ModerationRepository
 from blastbot.modules.moderation.service import ModerationService
-from blastbot.modules.roles.repository import RoleMenuRepository
-from blastbot.modules.roles.service import RoleMenuService
 from blastbot.modules.reddit.repository import RedditRepository
 from blastbot.modules.reddit.service import RedditService
+from blastbot.modules.roles.repository import RoleMenuRepository
+from blastbot.modules.roles.service import RoleMenuService
 from blastbot.modules.tickets.repository import TicketRepository
 from blastbot.modules.tickets.service import TicketService
 
