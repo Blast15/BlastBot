@@ -17,4 +17,6 @@ def enabled_extensions(settings: Settings) -> tuple[str, ...]:
         extensions.append("blastbot.modules.tickets.cog")
     if settings.feature_context_menus:
         extensions.append("blastbot.modules.interactions.cog")
+    if settings.feature_reddit:
+        extensions.append("blastbot.modules.reddit.cog")
     return tuple(extensions)

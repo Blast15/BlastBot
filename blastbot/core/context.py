@@ -14,6 +14,8 @@ from blastbot.modules.moderation.repository import ModerationRepository
 from blastbot.modules.moderation.service import ModerationService
 from blastbot.modules.roles.repository import RoleMenuRepository
 from blastbot.modules.roles.service import RoleMenuService
+from blastbot.modules.reddit.repository import RedditRepository
+from blastbot.modules.reddit.service import RedditService
 from blastbot.modules.tickets.repository import TicketRepository
 from blastbot.modules.tickets.service import TicketService
 
@@ -34,6 +36,8 @@ class AppContext:
     tickets: TicketService
     role_menus_repo: RoleMenuRepository
     role_menus: RoleMenuService
+    reddit_repo: RedditRepository
+    reddit: RedditService
 
 
 async def build_context(settings: Settings) -> AppContext:
@@ -46,6 +50,7 @@ async def build_context(settings: Settings) -> AppContext:
     automation_repo = AutomationRepository(database)
     tickets_repo = TicketRepository(database)
     role_menus_repo = RoleMenuRepository(database)
+    reddit_repo = RedditRepository(database)
     return AppContext(
         settings=settings,
         database=database,
@@ -61,4 +66,6 @@ async def build_context(settings: Settings) -> AppContext:
         tickets=TicketService(tickets_repo),
         role_menus_repo=role_menus_repo,
         role_menus=RoleMenuService(role_menus_repo),
+        reddit_repo=reddit_repo,
+        reddit=RedditService(reddit_repo),
     )

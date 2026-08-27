@@ -14,6 +14,7 @@ Repository này là bản source tối giản dành cho việc chạy bot trực
 - Context menu interactions.
 - Slash-command help system.
 - Guild-specific configuration.
+- Theo dõi bài viết mới từ nhiều cộng đồng Reddit và gửi embed vào kênh được chọn.
 - Feature flags cho từng module.
 
 ## Yêu cầu
@@ -80,13 +81,37 @@ LOG_LEVEL=INFO
 LOG_JSON=false
 SYNC_MODE=none
 TRANSCRIPT_MESSAGE_LIMIT=2000
+REDDIT_CLIENT_ID=
+REDDIT_CLIENT_SECRET=
+REDDIT_USER_AGENT=BlastBot/1.0 (Discord Reddit monitor)
+REDDIT_POLL_INTERVAL=120
 FEATURE_MODERATION=true
 FEATURE_TICKETS=true
 FEATURE_AUTOMATION=true
 FEATURE_FEEDBACK=true
 FEATURE_ROLES=true
 FEATURE_CONTEXT_MENUS=true
+FEATURE_REDDIT=true
 ```
+
+### Theo dõi Reddit
+
+Tạo một Reddit application loại **script** tại trang preferences/apps của Reddit, sau đó điền
+`REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`. Nên đổi `REDDIT_USER_AGENT` thành chuỗi nhận diện
+riêng cho bot của bạn. Bot gom các subscription cùng subreddit vào một request và mặc định kiểm
+tra mỗi 120 giây để tránh vượt rate limit.
+
+Các slash command dành cho người có quyền **Manage Server**:
+
+- `/reddit add subreddit channel`: chọn cộng đồng và kênh nhận bài mới.
+- `/reddit list`: xem toàn bộ cấu hình của server.
+- `/reddit toggle subscription_id enabled`: tạm dừng hoặc bật lại.
+- `/reddit remove subscription_id`: xóa cấu hình.
+- `/reddit test subreddit channel`: xem thử embed của bài mới nhất.
+
+Khi vừa thêm một cộng đồng, bot lấy bài mới nhất làm mốc và không gửi lại bài cũ. Các bài xuất
+hiện sau đó được gửi theo thứ tự thời gian, gồm tiêu đề, tác giả, thời gian, link và ảnh lớn nếu
+Reddit cung cấp ảnh preview.
 
 ### Command sync
 

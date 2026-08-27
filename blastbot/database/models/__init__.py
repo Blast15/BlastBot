@@ -2,6 +2,7 @@ from blastbot.database.models.automation import AutoMessage, Greeting
 from blastbot.database.models.core import (
     GuildConfig,
     ModerationLog,
+    RedditSubscription,
     RoleMenu,
     SuggestionMessage,
     SuggestionVote,
@@ -23,6 +24,7 @@ __all__ = [
     "Greeting",
     "GuildConfig",
     "ModerationLog",
+    "RedditSubscription",
     "RoleMenu",
     "SuggestionMessage",
     "SuggestionVote",

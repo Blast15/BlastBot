@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blastbot.database.base import Base, utcnow
@@ -71,4 +71,19 @@ class RoleMenu(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger)
     role_ids: Mapped[str] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(String(32), default="toggle")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RedditSubscription(Base):
+    __tablename__ = "reddit_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("guild_id", "subreddit", name="uq_reddit_guild_subreddit"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger)
+    subreddit: Mapped[str] = mapped_column(String(64), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_post_id: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

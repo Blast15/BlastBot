@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     transcript_message_limit: int = Field(
         default=2000, alias="TRANSCRIPT_MESSAGE_LIMIT", ge=100, le=10000
     )
+    reddit_client_id: str | None = Field(default=None, alias="REDDIT_CLIENT_ID")
+    reddit_client_secret: SecretStr | None = Field(default=None, alias="REDDIT_CLIENT_SECRET")
+    reddit_user_agent: str = Field(
+        default="BlastBot/1.0 (Discord Reddit monitor)", alias="REDDIT_USER_AGENT"
+    )
+    reddit_poll_interval: int = Field(
+        default=120, alias="REDDIT_POLL_INTERVAL", ge=60, le=3600
+    )
 
     feature_moderation: bool = Field(default=True, alias="FEATURE_MODERATION")
     feature_tickets: bool = Field(default=True, alias="FEATURE_TICKETS")
@@ -41,6 +49,7 @@ class Settings(BaseSettings):
     feature_feedback: bool = Field(default=True, alias="FEATURE_FEEDBACK")
     feature_roles: bool = Field(default=True, alias="FEATURE_ROLES")
     feature_context_menus: bool = Field(default=True, alias="FEATURE_CONTEXT_MENUS")
+    feature_reddit: bool = Field(default=True, alias="FEATURE_REDDIT")
 
     @field_validator("discord_token")
     @classmethod
