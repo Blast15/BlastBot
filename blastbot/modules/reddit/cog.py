@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import defaultdict
+from contextlib import suppress
 
 import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
 from blastbot.database.models import RedditSubscription
@@ -64,21 +67,26 @@ class RedditCog(commands.Cog):
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
         self.client = RedditClient(bot.app.settings)
+        self.poll.add_exception_type(SQLAlchemyError)
         self.poll.change_interval(seconds=bot.app.settings.reddit_poll_interval)
         self.configured = bool(
-            self.client.has_oauth_credentials
-            or bot.app.settings.reddit_keyless_fallback
+            self.client.has_oauth_credentials or bot.app.settings.reddit_keyless_fallback
         )
         if self.configured:
             self.poll.start()
             logger.info("Reddit monitoring started in %s mode", self.client.mode)
         else:
             logger.warning(
-                "Reddit monitoring is paused: OAuth credentials are missing and RSS fallback is disabled"
+                "Reddit monitoring is paused: OAuth credentials are missing "
+                "and RSS fallback is disabled"
             )
 
     async def cog_unload(self) -> None:
         self.poll.cancel()
+        task = self.poll.get_task()
+        if task is not None:
+            with suppress(asyncio.CancelledError):
+                await task
         await self.client.close()
 
     @reddit.command(name="add", description="Theo dõi bài mới của một cộng đồng Reddit")
@@ -101,7 +109,8 @@ class RedditCog(commands.Cog):
             await interaction.response.send_message(
                 embed=error(
                     "Reddit chưa được cấu hình",
-                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, sau đó restart bot.",
+                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, "
+                    "sau đó restart bot.",
                 ),
                 ephemeral=True,
             )
@@ -115,7 +124,8 @@ class RedditCog(commands.Cog):
             await interaction.followup.send(
                 embed=error(
                     "Không thể kết nối Reddit",
-                    f"Đang dùng **{self.client.mode}**. Kiểm tra tên cộng đồng hoặc thử lại sau nếu Reddit đang giới hạn request.",
+                    f"Đang dùng **{self.client.mode}**. Kiểm tra tên cộng đồng "
+                    "hoặc thử lại sau nếu Reddit đang giới hạn request.",
                 ),
                 ephemeral=True,
             )
@@ -159,9 +169,7 @@ class RedditCog(commands.Cog):
 
     @reddit.command(name="remove", description="Ngừng theo dõi một cộng đồng Reddit")
     @require_guild_permissions(manage_guild=True)
-    async def remove(
-        self, interaction: discord.Interaction, subscription_id: int
-    ) -> None:
+    async def remove(self, interaction: discord.Interaction, subscription_id: int) -> None:
         if interaction.guild_id is None:
             return
         await self.bot.app.reddit.remove(interaction.guild_id, subscription_id)
@@ -177,9 +185,7 @@ class RedditCog(commands.Cog):
     ) -> None:
         if interaction.guild_id is None:
             return
-        await self.bot.app.reddit.set_enabled(
-            interaction.guild_id, subscription_id, enabled
-        )
+        await self.bot.app.reddit.set_enabled(interaction.guild_id, subscription_id, enabled)
         await interaction.response.send_message(
             embed=success(
                 "Đã cập nhật",
@@ -200,7 +206,8 @@ class RedditCog(commands.Cog):
             await interaction.response.send_message(
                 embed=error(
                     "Reddit chưa được cấu hình",
-                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, sau đó restart bot.",
+                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, "
+                    "sau đó restart bot.",
                 ),
                 ephemeral=True,
             )
@@ -209,7 +216,8 @@ class RedditCog(commands.Cog):
         name = normalize_subreddit(subreddit)
         try:
             posts = await self.client.newest(name, limit=1)
-        except (aiohttp.ClientError, RuntimeError):
+        except (aiohttp.ClientError, RuntimeError) as exc:
+            logger.warning("Could not fetch Reddit test post from r/%s: %s", name, exc)
             await interaction.followup.send(
                 embed=error(
                     "Không thể lấy bài",
@@ -220,9 +228,7 @@ class RedditCog(commands.Cog):
             return
         if not posts:
             await interaction.followup.send(
-                embed=error(
-                    "Không có bài viết", f"Không tìm thấy bài công khai trong r/{name}."
-                ),
+                embed=error("Không có bài viết", f"Không tìm thấy bài công khai trong r/{name}."),
                 ephemeral=True,
             )
             return
@@ -262,9 +268,7 @@ class RedditCog(commands.Cog):
             try:
                 await channel.send(embed=reddit_embed(post))
             except discord.HTTPException:
-                logger.exception(
-                    "Failed to send Reddit post", extra={"guild_id": row.guild_id}
-                )
+                logger.exception("Failed to send Reddit post", extra={"guild_id": row.guild_id})
                 break
             last_processed_id = post.id
         if last_processed_id != row.last_seen_post_id:
@@ -284,7 +288,13 @@ class RedditCog(commands.Cog):
         for subreddit, subscriptions in grouped.items():
             posts = fetched.get(subreddit, [])
             for row in subscriptions:
-                await self._deliver(row, posts)
+                try:
+                    await self._deliver(row, posts)
+                except (discord.HTTPException, SQLAlchemyError):
+                    logger.exception(
+                        "Failed to process Reddit subscription",
+                        extra={"guild_id": row.guild_id, "channel_id": row.channel_id},
+                    )
 
     @poll.before_loop
     async def before_poll(self) -> None:

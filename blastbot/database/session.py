@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -29,7 +29,20 @@ class Database:
         self.engine: AsyncEngine = create_async_engine(
             settings.database_url,
             pool_pre_ping=not settings.is_sqlite,
+            connect_args={"timeout": 30} if settings.is_sqlite else {},
         )
+        if settings.is_sqlite:
+
+            @event.listens_for(self.engine.sync_engine, "connect")
+            def configure_sqlite(connection: object, _: object) -> None:
+                cursor = connection.cursor()  # type: ignore[attr-defined]
+                try:
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.execute("PRAGMA busy_timeout=30000")
+                finally:
+                    cursor.close()
+
         self.session_factory = async_sessionmaker(
             self.engine,
             class_=AsyncSession,
@@ -44,9 +57,7 @@ class Database:
             reddit_columns = await connection.run_sync(
                 lambda sync_connection: {
                     column["name"]
-                    for column in inspect(sync_connection).get_columns(
-                        "reddit_subscriptions"
-                    )
+                    for column in inspect(sync_connection).get_columns("reddit_subscriptions")
                 }
             )
             if "images_only" not in reddit_columns:
@@ -56,20 +67,6 @@ class Database:
                         "ADD COLUMN images_only BOOLEAN NOT NULL DEFAULT FALSE"
                     )
                 )
-            # These indexes protect ticket invariants on databases upgraded from
-            # the legacy bot, where the tables may already exist.
-            await connection.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_guild_number "
-                    "ON tickets (guild_id, number)"
-                )
-            )
-            await connection.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_channel_id "
-                    "ON tickets (channel_id)"
-                )
-            )
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:

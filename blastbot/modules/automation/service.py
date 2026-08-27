@@ -83,14 +83,8 @@ class AutomationService:
 
     async def remove_auto_message(self, guild_id: int, auto_id: int) -> None:
         if not await self.repository.delete_auto_message(guild_id, auto_id):
-            raise ResourceNotFoundError(
-                "auto-message not found", "Không tìm thấy auto-message."
-            )
+            raise ResourceNotFoundError("auto-message not found", "Không tìm thấy auto-message.")
 
-    async def set_auto_message_enabled(
-        self, guild_id: int, auto_id: int, enabled: bool
-    ) -> None:
+    async def set_auto_message_enabled(self, guild_id: int, auto_id: int, enabled: bool) -> None:
         if not await self.repository.toggle_auto_message(guild_id, auto_id, enabled):
-            raise ResourceNotFoundError(
-                "auto-message not found", "Không tìm thấy auto-message."
-            )
+            raise ResourceNotFoundError("auto-message not found", "Không tìm thấy auto-message.")

@@ -35,9 +35,7 @@ class ConfigurationCog(commands.Cog):
             interaction.guild_id, channel.id if channel else None
         )
         text = f"Log channel: {channel.mention}." if channel else "Đã tắt log channel."
-        await interaction.response.send_message(
-            embed=success("Đã cập nhật", text), ephemeral=True
-        )
+        await interaction.response.send_message(embed=success("Đã cập nhật", text), ephemeral=True)
 
     @config.command(name="view", description="Xem cấu hình chung")
     @require_guild_permissions(manage_guild=True)
@@ -45,13 +43,9 @@ class ConfigurationCog(commands.Cog):
         if interaction.guild_id is None:
             return
         data = await self.bot.app.guild_config.get(interaction.guild_id)
-        log_channel = (
-            f"<#{data.log_channel_id}>" if data.log_channel_id else "Chưa cấu hình"
-        )
+        log_channel = f"<#{data.log_channel_id}>" if data.log_channel_id else "Chưa cấu hình"
         await interaction.response.send_message(
-            embed=info(
-                "Cấu hình BlastBot", f"**Kênh moderation/report:** {log_channel}"
-            ),
+            embed=info("Cấu hình BlastBot", f"**Kênh moderation/report:** {log_channel}"),
             ephemeral=True,
         )
 

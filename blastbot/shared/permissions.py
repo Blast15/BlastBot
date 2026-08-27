@@ -64,10 +64,6 @@ def validate_member_manage(
 ) -> str | None:
     if target.id == guild.owner_id and actor.id != guild.owner_id:
         return "Không thể quản lý role của chủ server."
-    if (
-        actor.id != guild.owner_id
-        and target.id != actor.id
-        and target.top_role >= actor.top_role
-    ):
+    if actor.id != guild.owner_id and target.id != actor.id and target.top_role >= actor.top_role:
         return "Không thể quản lý role của thành viên có role cao hơn hoặc ngang bạn."
     return None

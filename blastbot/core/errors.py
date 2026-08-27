@@ -35,11 +35,3 @@ class ExternalServiceError(BotError):
 
 class InfrastructureError(BotError):
     """A database, filesystem, or other infrastructure operation failed."""
-
-
-class TicketLimitReachedError(ConflictError):
-    def __init__(self, limit: int) -> None:
-        super().__init__(
-            f"ticket limit reached: {limit}",
-            f"Bạn đã đạt giới hạn **{limit}** ticket đang mở.",
-        )

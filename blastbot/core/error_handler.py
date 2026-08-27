@@ -27,7 +27,10 @@ async def handle_app_command_error(
     elif isinstance(original, UserFacingError):
         message = original.user_message
     elif isinstance(original, discord.Forbidden):
-        message = "Bot thiếu quyền Discord cần thiết cho thao tác này. Hãy kiểm tra role và channel permissions."
+        message = (
+            "Bot thiếu quyền Discord cần thiết cho thao tác này. "
+            "Hãy kiểm tra role và channel permissions."
+        )
     else:
         logger.exception(
             "Unhandled application command error",

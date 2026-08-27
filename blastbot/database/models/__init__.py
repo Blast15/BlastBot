@@ -4,19 +4,8 @@ from blastbot.database.models.core import (
     ModerationLog,
     RedditSubscription,
     RoleMenu,
-    SuggestionMessage,
-    SuggestionVote,
     TempRole,
     UserState,
-)
-from blastbot.database.models.tickets import (
-    Ticket,
-    TicketBlacklist,
-    TicketMember,
-    TicketPanel,
-    TicketSettings,
-    TicketStaff,
-    TicketTag,
 )
 
 __all__ = [
@@ -26,15 +15,6 @@ __all__ = [
     "ModerationLog",
     "RedditSubscription",
     "RoleMenu",
-    "SuggestionMessage",
-    "SuggestionVote",
     "TempRole",
-    "Ticket",
-    "TicketBlacklist",
-    "TicketMember",
-    "TicketPanel",
-    "TicketSettings",
-    "TicketStaff",
-    "TicketTag",
     "UserState",
 ]

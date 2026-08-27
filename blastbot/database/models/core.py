@@ -22,9 +22,7 @@ class GuildConfig(Base):
     guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     welcome_channel_id: Mapped[int | None] = mapped_column(BigInteger)
     log_channel_id: Mapped[int | None] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class UserState(Base):
@@ -46,9 +44,7 @@ class ModerationLog(Base):
     target_str: Mapped[str | None] = mapped_column(String(255))
     reason: Mapped[str | None] = mapped_column(Text)
     extra_json: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class TempRole(Base):
@@ -60,21 +56,6 @@ class TempRole(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
-class SuggestionMessage(Base):
-    __tablename__ = "suggestion_messages"
-
-    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
-
-
-class SuggestionVote(Base):
-    __tablename__ = "suggestion_votes"
-
-    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    vote: Mapped[int] = mapped_column(Integer)
-
-
 class RoleMenu(Base):
     __tablename__ = "role_menus"
 
@@ -83,16 +64,12 @@ class RoleMenu(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger)
     role_ids: Mapped[str] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(String(32), default="toggle")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class RedditSubscription(Base):
     __tablename__ = "reddit_subscriptions"
-    __table_args__ = (
-        UniqueConstraint("guild_id", "subreddit", name="uq_reddit_guild_subreddit"),
-    )
+    __table_args__ = (UniqueConstraint("guild_id", "subreddit", name="uq_reddit_guild_subreddit"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     guild_id: Mapped[int] = mapped_column(BigInteger, index=True)
@@ -101,6 +78,4 @@ class RedditSubscription(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     images_only: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen_post_id: Mapped[str | None] = mapped_column(String(32))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

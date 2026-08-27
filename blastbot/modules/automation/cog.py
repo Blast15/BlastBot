@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 from datetime import UTC, datetime
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
 from blastbot.database.models import Greeting
@@ -48,10 +51,15 @@ class AutomationCog(commands.Cog):
 
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
+        self.auto_message_loop.add_exception_type(SQLAlchemyError)
         self.auto_message_loop.start()
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         self.auto_message_loop.cancel()
+        task = self.auto_message_loop.get_task()
+        if task is not None:
+            with suppress(asyncio.CancelledError):
+                await task
 
     @automsg.command(name="add", description="Thêm auto-message định kỳ")
     @require_guild_permissions(manage_guild=True)
@@ -85,9 +93,7 @@ class AutomationCog(commands.Cog):
     async def automsg_list(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:
             return
-        rows = await self.bot.app.automation_repo.list_auto_messages(
-            interaction.guild_id
-        )
+        rows = await self.bot.app.automation_repo.list_auto_messages(interaction.guild_id)
         if not rows:
             await interaction.response.send_message(
                 embed=info("Auto-message", "Chưa có auto-message nào."), ephemeral=True
@@ -104,9 +110,7 @@ class AutomationCog(commands.Cog):
 
     @automsg.command(name="delete", description="Xóa auto-message")
     @require_guild_permissions(manage_guild=True)
-    async def automsg_delete(
-        self, interaction: discord.Interaction, auto_id: int
-    ) -> None:
+    async def automsg_delete(self, interaction: discord.Interaction, auto_id: int) -> None:
         if interaction.guild_id is None:
             return
         await self.bot.app.automation.remove_auto_message(interaction.guild_id, auto_id)
@@ -170,9 +174,7 @@ class AutomationCog(commands.Cog):
         use_embed: bool = True,
         title: str | None = "Chào mừng!",
     ) -> None:
-        await self._configure_greeting(
-            interaction, "welcome", channel, message, use_embed, title
-        )
+        await self._configure_greeting(interaction, "welcome", channel, message, use_embed, title)
 
     @greeting.command(name="goodbye", description="Cấu hình lời tạm biệt")
     @require_guild_permissions(manage_guild=True)
@@ -184,9 +186,7 @@ class AutomationCog(commands.Cog):
         use_embed: bool = True,
         title: str | None = "Tạm biệt!",
     ) -> None:
-        await self._configure_greeting(
-            interaction, "goodbye", channel, message, use_embed, title
-        )
+        await self._configure_greeting(interaction, "goodbye", channel, message, use_embed, title)
 
     @greeting.command(name="disable", description="Tắt welcome hoặc goodbye")
     @app_commands.choices(
@@ -217,22 +217,16 @@ class AutomationCog(commands.Cog):
     async def greeting_test(
         self, interaction: discord.Interaction, kind: app_commands.Choice[str]
     ) -> None:
-        if interaction.guild_id is None or not isinstance(
-            interaction.user, discord.Member
-        ):
+        if interaction.guild_id is None or not isinstance(interaction.user, discord.Member):
             return
-        row = await self.bot.app.automation_repo.get_greeting(
-            interaction.guild_id, kind.value
-        )
+        row = await self.bot.app.automation_repo.get_greeting(interaction.guild_id, kind.value)
         if row is None or not row.enabled or row.channel_id is None or not row.message:
             await interaction.response.send_message(
                 embed=error("Chưa cấu hình", f"{kind.name} chưa được bật."),
                 ephemeral=True,
             )
             return
-        channel = (
-            interaction.guild.get_channel(row.channel_id) if interaction.guild else None
-        )
+        channel = interaction.guild.get_channel(row.channel_id) if interaction.guild else None
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
                 embed=error(
@@ -254,8 +248,7 @@ class AutomationCog(commands.Cog):
         text = render_greeting(row.message or "", member)
         if row.use_embed:
             card = discord.Embed(
-                title=row.title
-                or ("Chào mừng!" if row.kind == "welcome" else "Tạm biệt!"),
+                title=row.title or ("Chào mừng!" if row.kind == "welcome" else "Tạm biệt!"),
                 description=text,
                 color=row.color or discord.Color.blurple(),
             )
@@ -278,35 +271,27 @@ class AutomationCog(commands.Cog):
     async def on_member_join(self, member: discord.Member) -> None:
         if member.bot:
             return
-        row = await self.bot.app.automation_repo.get_greeting(
-            member.guild.id, "welcome"
-        )
+        row = await self.bot.app.automation_repo.get_greeting(member.guild.id, "welcome")
         if row and row.enabled and row.channel_id and row.message:
             channel = member.guild.get_channel(row.channel_id)
             if isinstance(channel, discord.TextChannel):
                 try:
                     await self._send_greeting(channel, member, row)
                 except discord.HTTPException:
-                    logger.exception(
-                        "Failed to send welcome", extra={"guild_id": member.guild.id}
-                    )
+                    logger.exception("Failed to send welcome", extra={"guild_id": member.guild.id})
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         if member.bot:
             return
-        row = await self.bot.app.automation_repo.get_greeting(
-            member.guild.id, "goodbye"
-        )
+        row = await self.bot.app.automation_repo.get_greeting(member.guild.id, "goodbye")
         if row and row.enabled and row.channel_id and row.message:
             channel = member.guild.get_channel(row.channel_id)
             if isinstance(channel, discord.TextChannel):
                 try:
                     await self._send_greeting(channel, member, row)
                 except discord.HTTPException:
-                    logger.exception(
-                        "Failed to send goodbye", extra={"guild_id": member.guild.id}
-                    )
+                    logger.exception("Failed to send goodbye", extra={"guild_id": member.guild.id})
 
     @tasks.loop(minutes=1.0)
     async def auto_message_loop(self) -> None:
@@ -316,9 +301,7 @@ class AutomationCog(commands.Cog):
             guild = self.bot.get_guild(row.guild_id)
             channel = guild.get_channel(row.channel_id) if guild else None
             if not isinstance(channel, discord.TextChannel):
-                await self.bot.app.automation_repo.toggle_auto_message(
-                    row.guild_id, row.id, False
-                )
+                await self.bot.app.automation_repo.toggle_auto_message(row.guild_id, row.id, False)
                 logger.warning(
                     "Disabled auto-message with missing channel",
                     extra={
@@ -331,9 +314,7 @@ class AutomationCog(commands.Cog):
             try:
                 if row.use_embed:
                     await channel.send(
-                        embed=discord.Embed(
-                            description=row.content, color=discord.Color.blurple()
-                        ),
+                        embed=discord.Embed(description=row.content, color=discord.Color.blurple()),
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
                 else:
@@ -342,11 +323,13 @@ class AutomationCog(commands.Cog):
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
             except discord.HTTPException:
-                logger.exception(
-                    "Failed to send auto-message", extra={"guild_id": row.guild_id}
-                )
+                logger.exception("Failed to send auto-message", extra={"guild_id": row.guild_id})
                 continue
             await self.bot.app.automation_repo.mark_sent(row.id, now)
+
+    @auto_message_loop.before_loop
+    async def before_auto_message_loop(self) -> None:
+        await self.bot.wait_until_ready()
 
     @auto_message_loop.error
     async def auto_message_loop_error(self, exception: BaseException) -> None:
@@ -358,10 +341,6 @@ class AutomationCog(commands.Cog):
                 "error_type": type(exception).__name__,
             },
         )
-
-    @auto_message_loop.before_loop
-    async def before_auto_message_loop(self) -> None:
-        await self.bot.wait_until_ready()
 
 
 async def setup(bot: BlastBot) -> None:

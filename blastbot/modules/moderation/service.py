@@ -21,9 +21,7 @@ class ModerationService:
     def __init__(self, repository: ModerationRepository) -> None:
         self.repository = repository
 
-    async def record_action(
-        self, action: str, record: ModerationRecord, **extra: Any
-    ) -> None:
+    async def record_action(self, action: str, record: ModerationRecord, **extra: Any) -> None:
         reason = require_text(record.reason, maximum=1000) if record.reason else None
         await self.repository.add_log(
             guild_id=record.guild_id,
@@ -51,9 +49,7 @@ class ModerationService:
     async def add_temp_role(
         self, *, guild_id: int, user_id: int, role_id: int, duration_minutes: int
     ) -> datetime:
-        minutes = require_range(
-            duration_minutes, minimum=1, maximum=40320, name="Thời lượng"
-        )
+        minutes = require_range(duration_minutes, minimum=1, maximum=40320, name="Thời lượng")
         expires_at = datetime.now(UTC) + timedelta(minutes=minutes)
         await self.repository.put_temp_role(
             guild_id=guild_id,

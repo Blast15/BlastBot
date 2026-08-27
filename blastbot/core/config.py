@@ -24,31 +24,20 @@ class Settings(BaseSettings):
     discord_token: SecretStr = Field(alias="DISCORD_TOKEN")
     owner_id: int | None = Field(default=None, alias="OWNER_ID")
     dev_guild_id: int | None = Field(default=None, alias="DEV_GUILD_ID")
-    database_url: str = Field(
-        default="sqlite+aiosqlite:///./data/bot.db", alias="DATABASE_URL"
-    )
+    database_url: str = Field(default="sqlite+aiosqlite:///./data/bot.db", alias="DATABASE_URL")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_json: bool = Field(default=False, alias="LOG_JSON")
     sync_mode: SyncMode = Field(default=SyncMode.NONE, alias="SYNC_MODE")
-    transcript_message_limit: int = Field(
-        default=2000, alias="TRANSCRIPT_MESSAGE_LIMIT", ge=100, le=10000
-    )
     reddit_client_id: str | None = Field(default=None, alias="REDDIT_CLIENT_ID")
-    reddit_client_secret: SecretStr | None = Field(
-        default=None, alias="REDDIT_CLIENT_SECRET"
-    )
+    reddit_client_secret: SecretStr | None = Field(default=None, alias="REDDIT_CLIENT_SECRET")
     reddit_user_agent: str = Field(
         default="BlastBot Discord Reddit monitor by Blast15", alias="REDDIT_USER_AGENT"
     )
-    reddit_poll_interval: int = Field(
-        default=120, alias="REDDIT_POLL_INTERVAL", ge=60, le=3600
-    )
+    reddit_poll_interval: int = Field(default=120, alias="REDDIT_POLL_INTERVAL", ge=60, le=3600)
     reddit_keyless_fallback: bool = Field(default=True, alias="REDDIT_KEYLESS_FALLBACK")
 
     feature_moderation: bool = Field(default=True, alias="FEATURE_MODERATION")
-    feature_tickets: bool = Field(default=True, alias="FEATURE_TICKETS")
     feature_automation: bool = Field(default=True, alias="FEATURE_AUTOMATION")
-    feature_feedback: bool = Field(default=True, alias="FEATURE_FEEDBACK")
     feature_roles: bool = Field(default=True, alias="FEATURE_ROLES")
     feature_context_menus: bool = Field(default=True, alias="FEATURE_CONTEXT_MENUS")
     feature_reddit: bool = Field(default=True, alias="FEATURE_REDDIT")
@@ -70,9 +59,7 @@ class Settings(BaseSettings):
     def normalize_log_level(cls, value: str) -> str:
         normalized = value.upper().strip()
         if normalized not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
-            raise ValueError(
-                "LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL"
-            )
+            raise ValueError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL")
         return normalized
 
     @property

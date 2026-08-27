@@ -28,7 +28,7 @@ def normalize_channel_name(value: str) -> str:
     normalized = value.strip().lower().replace(" ", "-")
     normalized = re.sub(r"[^a-z0-9-_]", "-", normalized)
     normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
-    return (normalized or "ticket")[:100]
+    return (normalized or "channel")[:100]
 
 
 def normalize_tag_id(value: str) -> str:

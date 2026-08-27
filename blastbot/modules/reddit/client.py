@@ -85,9 +85,7 @@ def parse_post(data: dict[str, Any]) -> RedditPost | None:
     post_id = data.get("id")
     title = data.get("title")
     subreddit = data.get("subreddit")
-    if not all(
-        isinstance(value, str) and value for value in (post_id, title, subreddit)
-    ):
+    if not all(isinstance(value, str) and value for value in (post_id, title, subreddit)):
         return None
     created = data.get("created_utc")
     try:
@@ -142,10 +140,7 @@ def _feed_image(content: str) -> str | None:
     preferred = [
         url
         for url in parser.images
-        if any(
-            host in url
-            for host in ("preview.redd.it", "i.redd.it", "external-preview.redd.it")
-        )
+        if any(host in url for host in ("preview.redd.it", "i.redd.it", "external-preview.redd.it"))
     ]
     candidates = preferred or parser.images
     return _full_size_image(candidates[-1]) if candidates else None
@@ -156,7 +151,7 @@ def _feed_datetime(value: str | None) -> datetime:
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
         except ValueError:
-            pass
+            logger.debug("Reddit feed contained an invalid published timestamp: %r", value)
     return datetime.now(UTC)
 
 
@@ -175,9 +170,7 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
         if not raw_id or not title or not link:
             continue
         link_match = SUBREDDIT_FROM_LINK.search(link)
-        post_subreddit = (
-            link_match.group(1).lower() if link_match else subreddit.lower()
-        )
+        post_subreddit = link_match.group(1).lower() if link_match else subreddit.lower()
         author = (entry.findtext(f"{ATOM}author/{ATOM}name") or "[deleted]").strip()
         author = author.removeprefix("/u/").removeprefix("u/")
         content = entry.findtext(f"{ATOM}content") or ""
@@ -190,8 +183,7 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
                 author=author,
                 permalink=link,
                 created_at=_feed_datetime(
-                    entry.findtext(f"{ATOM}published")
-                    or entry.findtext(f"{ATOM}updated")
+                    entry.findtext(f"{ATOM}published") or entry.findtext(f"{ATOM}updated")
                 ),
                 text=None,
                 image_url=_feed_image(content),
@@ -216,9 +208,7 @@ class RedditClient:
     def has_oauth_credentials(self) -> bool:
         secret = self._settings.reddit_client_secret
         return bool(
-            self._settings.reddit_client_id
-            and secret is not None
-            and secret.get_secret_value()
+            self._settings.reddit_client_id and secret is not None and secret.get_secret_value()
         )
 
     @property
@@ -266,21 +256,35 @@ class RedditClient:
             return token
 
     async def _newest_oauth(self, subreddit: str, limit: int) -> list[RedditPost]:
-        token = await self._access_token()
         session = self._get_session()
-        url = f"https://oauth.reddit.com/r/{quote(subreddit, safe='')}/new"
-        async with session.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            params={"limit": min(max(limit, 1), 100), "raw_json": 1},
-        ) as response:
-            if response.status == 429:
-                retry_after = response.headers.get("Retry-After", "unknown")
-                raise RuntimeError(
-                    f"Reddit rate limit reached; retry after {retry_after}s"
-                )
-            response.raise_for_status()
-            payload = await response.json()
+        url = f"https://oauth.reddit.com/r/{quote(subreddit, safe='+')}/new"
+        for attempt in range(2):
+            token = await self._access_token()
+            async with session.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                params={"limit": min(max(limit, 1), 100), "raw_json": 1},
+            ) as response:
+                if response.status == 401 and attempt == 0:
+                    self._token = None
+                    continue
+                if response.status == 429 or response.status >= 500:
+                    delay = (
+                        self._rate_limit_delay(response.headers) if response.status == 429 else 2.0
+                    )
+                    if attempt == 0:
+                        logger.warning(
+                            "Reddit OAuth returned %d; retrying in %.0f seconds",
+                            response.status,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                response.raise_for_status()
+                payload = await response.json()
+                break
+        else:  # pragma: no cover - both attempts always return or raise
+            raise RuntimeError("Reddit OAuth request failed")
         children = payload.get("data", {}).get("children", [])
         posts: list[RedditPost] = []
         for child in children:
@@ -306,9 +310,7 @@ class RedditClient:
         self, path: str, fallback_subreddit: str, limit: int
     ) -> list[RedditPost]:
         if not self._settings.reddit_keyless_fallback:
-            raise RuntimeError(
-                "Reddit OAuth credentials are missing and RSS fallback is disabled"
-            )
+            raise RuntimeError("Reddit OAuth credentials are missing and RSS fallback is disabled")
         async with self._keyless_lock:
             for attempt in range(2):
                 now = time.monotonic()
@@ -344,12 +346,11 @@ class RedditClient:
                     remaining = response.headers.get("x-ratelimit-remaining")
                     try:
                         if remaining is not None and float(remaining) < 1.0:
-                            self._keyless_blocked_until = (
-                                time.monotonic()
-                                + self._rate_limit_delay(response.headers)
+                            self._keyless_blocked_until = time.monotonic() + self._rate_limit_delay(
+                                response.headers
                             )
                     except ValueError:
-                        pass
+                        logger.debug("Invalid Reddit rate-limit header: %r", remaining)
                     return parse_feed(feed, fallback_subreddit)
         return []
 
@@ -364,8 +365,11 @@ class RedditClient:
         if not names:
             return grouped
         if self.has_oauth_credentials:
-            for name in names:
-                grouped[name] = await self._newest_oauth(name, min(limit, 100))
+            combined = "+".join(names)
+            posts = await self._newest_oauth(combined, min(limit, 100))
+            for post in posts:
+                if post.subreddit.lower() in grouped:
+                    grouped[post.subreddit.lower()].append(post)
             return grouped
         combined_path = "+".join(quote(name, safe="") for name in names)
         posts = await self._newest_feed_path(combined_path, names[0], limit)

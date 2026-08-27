@@ -101,9 +101,7 @@ class ModerationRepository:
 
     async def expired_temp_roles(self, now: datetime) -> list[TempRole]:
         async with self._database.session() as session:
-            result = await session.scalars(
-                select(TempRole).where(TempRole.expires_at <= now)
-            )
+            result = await session.scalars(select(TempRole).where(TempRole.expires_at <= now))
             return list(result)
 
     async def get_log_channel_id(self, guild_id: int) -> int | None:

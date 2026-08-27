@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
 from blastbot.modules.moderation.service import ModerationRecord
@@ -44,10 +47,15 @@ async def _reason_autocomplete(
 class ModerationCog(commands.Cog):
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
+        self.temp_role_cleanup.add_exception_type(SQLAlchemyError)
         self.temp_role_cleanup.start()
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         self.temp_role_cleanup.cancel()
+        task = self.temp_role_cleanup.get_task()
+        if task is not None:
+            with suppress(asyncio.CancelledError):
+                await task
 
     def _record(
         self,
@@ -109,9 +117,7 @@ class ModerationCog(commands.Cog):
     ) -> None:
         if interaction.guild is None:
             return
-        channel_id = await self.bot.app.moderation_repo.get_log_channel_id(
-            interaction.guild.id
-        )
+        channel_id = await self.bot.app.moderation_repo.get_log_channel_id(interaction.guild.id)
         channel = interaction.guild.get_channel(channel_id) if channel_id else None
         if isinstance(channel, (discord.TextChannel, discord.Thread)):
             embed = info(
@@ -144,9 +150,7 @@ class ModerationCog(commands.Cog):
             interaction, "Xác nhận kick", f"Kick {member.mention} khỏi server?"
         ):
             return
-        await member.kick(
-            reason=f"{reason or 'Không có lý do'} | by {interaction.user}"
-        )
+        await member.kick(reason=f"{reason or 'Không có lý do'} | by {interaction.user}")
         await self.bot.app.moderation.record_action(
             "KICK", self._record(interaction, member, reason)
         )
@@ -207,14 +211,9 @@ class ModerationCog(commands.Cog):
         reason: str | None = None,
         delete_messages: app_commands.Range[int, 1, 7] = 1,
     ) -> None:
-        if (
-            not await self._validate_target(interaction, member)
-            or interaction.guild is None
-        ):
+        if not await self._validate_target(interaction, member) or interaction.guild is None:
             return
-        if not await self._confirm(
-            interaction, "Xác nhận softban", f"Softban {member.mention}?"
-        ):
+        if not await self._confirm(interaction, "Xác nhận softban", f"Softban {member.mention}?"):
             return
         await interaction.guild.ban(
             member,
@@ -230,9 +229,7 @@ class ModerationCog(commands.Cog):
         await interaction.edit_original_response(
             embed=success("Đã softban", f"Đã softban {member.mention}."), view=None
         )
-        await self._emit_log(
-            interaction, action="SOFTBAN", target=member, reason=reason
-        )
+        await self._emit_log(interaction, action="SOFTBAN", target=member, reason=reason)
 
     @app_commands.command(name="timeout", description="Timeout một thành viên")
     @app_commands.guild_only()
@@ -265,18 +262,12 @@ class ModerationCog(commands.Cog):
             duration_minutes=int(duration),
         )
         await interaction.edit_original_response(
-            embed=success(
-                "Đã timeout", f"Đã timeout {member.mention} trong {duration} phút."
-            ),
+            embed=success("Đã timeout", f"Đã timeout {member.mention} trong {duration} phút."),
             view=None,
         )
-        await self._emit_log(
-            interaction, action="TIMEOUT", target=member, reason=reason
-        )
+        await self._emit_log(interaction, action="TIMEOUT", target=member, reason=reason)
 
-    @app_commands.command(
-        name="clear", description="Xóa tin nhắn gần đây, bỏ qua tin đã ghim"
-    )
+    @app_commands.command(name="clear", description="Xóa tin nhắn gần đây, bỏ qua tin đã ghim")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_messages=True)
     @require_guild_permissions(manage_messages=True)
@@ -292,9 +283,7 @@ class ModerationCog(commands.Cog):
             )
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        deleted = await channel.purge(
-            limit=int(amount), check=lambda m: not m.pinned, bulk=True
-        )
+        deleted = await channel.purge(limit=int(amount), check=lambda m: not m.pinned, bulk=True)
         record = ModerationRecord(
             guild_id=interaction.guild_id or 0,
             moderator_id=interaction.user.id,
@@ -302,13 +291,9 @@ class ModerationCog(commands.Cog):
             target_str=f"#{channel.name}",
             reason=None,
         )
-        await self.bot.app.moderation.record_action(
-            "CLEAR", record, deleted=len(deleted)
-        )
+        await self.bot.app.moderation.record_action("CLEAR", record, deleted=len(deleted))
         await interaction.followup.send(
-            embed=success(
-                "Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned)."
-            ),
+            embed=success("Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned)."),
             ephemeral=True,
         )
 
@@ -325,9 +310,7 @@ class ModerationCog(commands.Cog):
         duration: app_commands.Range[int, 1, 40320],
         reason: str | None = None,
     ) -> None:
-        if interaction.guild is None or not isinstance(
-            interaction.user, discord.Member
-        ):
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
             return
         problem = validate_member_manage(interaction.guild, interaction.user, member)
         if problem is None:
@@ -372,13 +355,9 @@ class ModerationCog(commands.Cog):
     ) -> None:
         if not await self._validate_target(interaction, member):
             return
-        count = await self.bot.app.moderation.warn(
-            self._record(interaction, member, reason)
-        )
+        count = await self.bot.app.moderation.warn(self._record(interaction, member, reason))
         await interaction.response.send_message(
-            embed=success(
-                "Đã cảnh cáo", f"{member.mention} hiện có **{count}** cảnh cáo."
-            ),
+            embed=success("Đã cảnh cáo", f"{member.mention} hiện có **{count}** cảnh cáo."),
             ephemeral=True,
         )
         await self._emit_log(interaction, action="WARN", target=member, reason=reason)
@@ -387,9 +366,7 @@ class ModerationCog(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
     @require_guild_permissions(moderate_members=True)
-    async def warnings(
-        self, interaction: discord.Interaction, member: discord.Member
-    ) -> None:
+    async def warnings(self, interaction: discord.Interaction, member: discord.Member) -> None:
         if interaction.guild_id is None:
             return
         count = await self.bot.app.moderation.warnings(interaction.guild_id, member.id)

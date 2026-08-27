@@ -10,9 +10,7 @@ from blastbot.shared.embeds import error as error_embed
 logger = logging.getLogger(__name__)
 
 
-async def respond_ui_error(
-    interaction: discord.Interaction, exception: Exception
-) -> None:
+async def respond_ui_error(interaction: discord.Interaction, exception: Exception) -> None:
     message = (
         exception.user_message
         if isinstance(exception, UserFacingError)
@@ -48,7 +46,5 @@ class SafeView(discord.ui.View):
 
 
 class SafeModal(discord.ui.Modal):
-    async def on_error(
-        self, interaction: discord.Interaction, error: Exception
-    ) -> None:
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         await respond_ui_error(interaction, error)

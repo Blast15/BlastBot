@@ -1,240 +1,103 @@
 # BlastBot
 
-**Phiên bản hiện tại: `v3.1.0`**
+BlastBot là Discord bot đa năng viết bằng Python, tập trung vào moderation, role, automation và theo dõi Reddit. Dự án dùng slash command, SQLite bất đồng bộ và cấu hình hoàn toàn qua biến môi trường.
 
-BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
+**Phiên bản hiện tại:** `4.0.0`
 
-Repository này là bản source tối giản dành cho việc chạy bot trực tiếp. Database SQLite được khởi tạo tự động khi bot khởi động, không cần chạy migration thủ công.
+## Tính năng
 
-## Tính năng chính
-
-- Moderation và warning system.
-- Ticket system với panel, staff, blacklist, transcript, claim và autoclose.
-- Role management và role menu.
-- Feedback / suggestion system.
-- Automation và greeting configuration.
-- Context menu interactions.
-- Slash-command help system.
-- Guild-specific configuration.
-- Theo dõi bài viết mới từ nhiều cộng đồng Reddit và gửi embed vào kênh được chọn.
-- Feature flags cho từng module.
-
-## Yêu cầu
-
-- Python 3.13 được khuyến nghị.
-- Discord Bot Token.
+- Moderation: kick, ban, softban, timeout, purge, warn và temporary role.
+- Report User / Report Message qua context menu, gửi về moderation log channel.
+- Role management và persistent self-assign role menu.
+- Welcome, goodbye và auto-message định kỳ.
+- Reddit subscription theo server, hỗ trợ OAuth hoặc RSS công khai, lọc bài có ảnh.
+- Help động, cấu hình log channel và structured logging tùy chọn.
 
 ## Cài đặt
 
-Clone repository:
+Yêu cầu Python 3.11 trở lên.
 
 ```bash
 git clone https://github.com/Blast15/BlastBot.git
 cd BlastBot
+python -m venv .venv
 ```
 
-Tạo virtual environment:
-
-### Windows
-
-```powershell
-py -3.13 -m venv .venv
-.venv\Scripts\activate
-```
-
-### Linux / macOS
-
-```bash
-python3.13 -m venv .venv
-source .venv/bin/activate
-```
-
-Cài dependency:
+Kích hoạt môi trường (`.venv\\Scripts\\activate` trên Windows hoặc `source .venv/bin/activate` trên Linux/macOS), sau đó:
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
+python main.py
 ```
+
+Trên Windows, dùng `Copy-Item .env.example .env` thay cho `cp`.
 
 ## Cấu hình
 
-Sao chép `.env.example` thành `.env`:
+`DISCORD_TOKEN` là biến bắt buộc. Các biến còn lại có giá trị mặc định trong `.env.example`.
 
-### Windows
+| Biến | Mô tả |
+| --- | --- |
+| `DISCORD_TOKEN` | Bot token từ Discord Developer Portal |
+| `OWNER_ID` | Discord user ID của owner, có thể để trống |
+| `DEV_GUILD_ID` | Server dùng khi `SYNC_MODE=dev_guild` |
+| `DATABASE_URL` | SQLAlchemy async URL, mặc định SQLite trong `data/` |
+| `LOG_LEVEL`, `LOG_JSON` | Mức log và định dạng JSON |
+| `SYNC_MODE` | `none`, `dev_guild` hoặc `global` |
+| `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | OAuth application credentials, có thể để trống khi dùng RSS |
+| `REDDIT_USER_AGENT` | Chuỗi định danh client Reddit |
+| `REDDIT_POLL_INTERVAL` | Chu kỳ poll, từ 60 đến 3600 giây |
+| `REDDIT_KEYLESS_FALLBACK` | Cho phép RSS khi không có OAuth |
+| `FEATURE_*` | Bật/tắt từng module còn được hỗ trợ |
 
-```powershell
-copy .env.example .env
-```
+Không commit file `.env` hoặc token. Với Reddit OAuth, tạo application loại `script` và đặt user-agent riêng, rõ ràng.
 
-### Linux / macOS
+## Discord
 
-```bash
-cp .env.example .env
-```
+Bật **Server Members Intent** trong Developer Portal. Message Content Intent không cần thiết.
 
-Sau đó chỉnh các giá trị cần thiết:
+Khi invite bot, chọn scope `bot` và `applications.commands`. Quyền tối thiểu phụ thuộc tính năng sử dụng: View Channels, Send Messages, Embed Links, Manage Roles, Moderate Members, Kick Members, Ban Members và Manage Messages. Role của bot phải nằm trên role/member mà bot quản lý.
 
-```env
-DISCORD_TOKEN=your_bot_token
-OWNER_ID=
-DEV_GUILD_ID=
-DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
-LOG_LEVEL=INFO
-LOG_JSON=false
-SYNC_MODE=none
-TRANSCRIPT_MESSAGE_LIMIT=2000
-REDDIT_CLIENT_ID=
-REDDIT_CLIENT_SECRET=
-REDDIT_USER_AGENT=BlastBot Discord Reddit monitor by Blast15
-REDDIT_POLL_INTERVAL=120
-REDDIT_KEYLESS_FALLBACK=true
-FEATURE_MODERATION=true
-FEATURE_TICKETS=true
-FEATURE_AUTOMATION=true
-FEATURE_FEEDBACK=true
-FEATURE_ROLES=true
-FEATURE_CONTEXT_MENUS=true
-FEATURE_REDDIT=true
-```
+Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát triển; chỉ dùng `global` khi cần publish command toàn cục, sau đó có thể trả về `none`.
 
-### Theo dõi Reddit
+## Command chính
 
-Mặc định bot vẫn hoạt động khi để trống `REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`: bot tự dùng
-RSS công khai của subreddit nhờ `REDDIT_KEYLESS_FALLBACK=true`. Chế độ này không cần API key,
-nhưng có thể bị Reddit giới hạn theo IP và một số bài sẽ không có ảnh đầy đủ trong RSS.
+- `/help [command]`
+- `/config logchannel`, `/config view`
+- `/kick`, `/ban`, `/softban`, `/timeout`, `/purge`, `/warn`, `/warnings`, `/temprole`
+- `/roleadd`, `/roleremove`, `/rolemenu create|list|delete`
+- `/greeting welcome|goodbye|disable|test`
+- `/automsg add|list|delete|toggle`
+- `/reddit add|list|remove|toggle|test`
 
-Nếu có Reddit application loại **script**, hãy điền `REDDIT_CLIENT_ID` và
-`REDDIT_CLIENT_SECRET`; bot sẽ tự ưu tiên OAuth để có metadata và ảnh ổn định hơn. Nên đổi
-`REDDIT_USER_AGENT` thành chuỗi nhận diện riêng. Bot gom các subscription cùng subreddit vào một
-request, kiểm tra mặc định mỗi 120 giây và tự giãn request ở chế độ không key để hạn chế lỗi 429.
+Context menu trong **Apps** cung cấp thông tin user, avatar, bookmark và report user/message.
 
-Đặt `REDDIT_KEYLESS_FALLBACK=false` nếu muốn tắt hoàn toàn chế độ RSS và chỉ cho module chạy khi
-có OAuth credential.
-
-Các slash command dành cho người có quyền **Manage Server**:
-
-- `/reddit add subreddit channel images_only`: chọn cộng đồng, kênh nhận bài mới và có thể chỉ nhận bài có ảnh.
-- `/reddit list`: xem toàn bộ cấu hình của server.
-- `/reddit toggle subscription_id enabled`: tạm dừng hoặc bật lại.
-- `/reddit remove subscription_id`: xóa cấu hình.
-- `/reddit test subreddit channel`: xem thử embed của bài mới nhất.
-
-### Hệ thống lệnh
-
-- `/help`: trung tâm trợ giúp theo danh mục; dùng `/help command:<tên>` để xem chi tiết.
-- `/ticket ...`: thao tác trong ticket dành cho owner hoặc ticket staff.
-- `/ticket-config ...`: cấu hình ticket dành cho người có quyền Manage Server.
-- `/ticket-panel ...`: tạo, gửi và quản lý ticket panel.
-- `/ticket-tags ...`: quản lý quick tag.
-- Context menu nằm trong menu **Apps** khi nhấp phải vào user hoặc tin nhắn.
-
-BlastBot chỉ dùng slash command và context menu; prefix command cũ đã được loại bỏ.
-
-### Phân quyền và bảo mật
-
-- Các lệnh cấu hình yêu cầu **Manage Server**; moderation và role yêu cầu đúng Discord permission
-  tương ứng, đồng thời kiểm tra role hierarchy tại runtime.
-- Lệnh ticket thông thường kiểm tra owner/ticket staff từ database; cấu hình ticket chỉ dành cho
-  **Manage Server**.
-- Bot nên có các quyền: View Channels, Send Messages, Embed Links, Attach Files, Read Message
-  History và Use Application Commands. Chỉ cấp thêm Manage Channels/Messages, Manage Roles,
-  Kick, Ban hoặc Moderate Members khi bật module tương ứng.
-- Không cấp Administrator nếu không cần. Bot không xử lý prefix command và không yêu cầu Message
-  Content intent.
-- RSS Reddit được parse bằng `defusedxml`; mention từ nội dung tự động và report bị vô hiệu hóa.
-
-### Quy tắc phát triển Ponytail
-
-Project tích hợp skill Ponytail tại `.agents/skills/ponytail/SKILL.md`. Agent sửa code phải đọc
-skill này qua `AGENTS.md`: ưu tiên tái sử dụng, stdlib/native feature và diff tối thiểu, nhưng
-không được lược bỏ validation, bảo mật hoặc xử lý lỗi cần thiết.
-
-Khi vừa thêm một cộng đồng, bot lấy bài mới nhất làm mốc và không gửi lại bài cũ. Các bài xuất
-hiện sau đó được gửi theo thứ tự thời gian, gồm tiêu đề, tác giả, thời gian, link và ảnh lớn nếu
-Reddit cung cấp ảnh preview.
-
-### Command sync
-
-`SYNC_MODE` hỗ trợ:
-
-- `none`: không tự sync command khi startup.
-- `dev_guild`: sync vào guild được khai báo bằng `DEV_GUILD_ID`, phù hợp khi phát triển.
-- `global`: sync global command tree.
-
-Trong quá trình phát triển nên dùng `dev_guild` để command cập nhật nhanh hơn.
-
-## Chạy bot
-
-```bash
-python main.py
-```
-
-Hoặc:
-
-```bash
-python -m blastbot
-```
-
-Khi dùng cấu hình SQLite mặc định, database sẽ được tạo tại:
+## Cấu trúc
 
 ```text
-data/bot.db
+blastbot/
+├── core/          # Bot, settings, error handling, logging
+├── database/      # SQLAlchemy engine và models
+├── modules/       # Feature cogs, validation/service và persistence
+└── shared/        # UI, embed, permission và validation dùng chung
+tests/             # Smoke và regression tests
+main.py            # Entrypoint
 ```
 
-Các bảng cần thiết được kiểm tra và tạo tự động khi bot khởi động.
+Service được giữ ở nơi có validation hoặc quy tắc nghiệp vụ; repository chịu trách nhiệm transaction và query. SQLite bật WAL, foreign keys và busy timeout khi kết nối.
 
-## Cấu trúc source
-
-```text
-BlastBot/
-├── blastbot/
-│   ├── core/           # bot lifecycle, config, error handling, context
-│   ├── database/       # SQLAlchemy models và database session
-│   ├── modules/        # các feature của bot
-│   └── shared/         # thành phần dùng chung nhỏ
-├── main.py
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── .gitattributes
-├── LICENSE
-└── README.md
-```
-
-Các feature lớn nằm trong `blastbot/modules/` và được tách theo domain thay vì gom toàn bộ logic vào một file bot duy nhất.
-
-## Discord Developer Portal
-
-Tạo application/bot tại Discord Developer Portal, lấy Bot Token và đặt vào `DISCORD_TOKEN` trong `.env`.
-
-Chỉ bật các privileged intents thực sự cần cho những feature bạn sử dụng. Nếu thay đổi intent hoặc quyền của bot, cần cập nhật tương ứng trong Discord Developer Portal và quyền role của bot trong server.
-
-## Database
-
-Mặc định BlastBot dùng SQLite thông qua `aiosqlite`:
-
-```env
-DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
-```
-
-Không commit thư mục `data/`, file `.db` hoặc `.env` lên GitHub.
-
-## Cập nhật source trên server
+## Development
 
 ```bash
-git pull origin main
-pip install -r requirements.txt
-python main.py
+ruff check .
+pytest -q
+python -m compileall -q blastbot main.py
+python -c "import blastbot"
 ```
 
-Nếu chạy bot bằng process manager như systemd, PM2 hoặc Docker bên ngoài repository này, restart process sau khi pull.
-
-## Bảo mật
-
-- Không commit `.env` hoặc Discord token.
-- Không hard-code token/API key vào source.
-- Nếu token từng bị public, reset token ngay trong Discord Developer Portal.
-- Chỉ cấp cho bot các Discord permissions thực sự cần thiết.
+Production nên chạy bot dưới process supervisor hoặc container có restart policy, mount bền vững thư mục `data/` và `logs/`, giữ một process ghi vào mỗi SQLite database, và xử lý `SIGTERM` để Discord/HTTP/database đóng sạch.
 
 ## License
 
-Dự án được phát hành theo giấy phép [MIT](LICENSE).
+Phát hành theo [MIT License](LICENSE).

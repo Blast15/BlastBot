@@ -13,7 +13,7 @@ from blastbot.core.context import build_context
 from blastbot.core.extensions import enabled_extensions
 from blastbot.modules.help.cog import category_embed
 from blastbot.modules.moderation.service import ModerationRecord
-from blastbot.modules.reddit.client import RedditPost, parse_feed
+from blastbot.modules.reddit.client import RedditClient, RedditPost, parse_feed
 from blastbot.modules.reddit.cog import RedditCog, reddit_embed
 
 
@@ -41,9 +41,6 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.app.moderation.warn(record), 1)
         self.assertEqual(await self.app.moderation.warnings(1, 20), 1)
 
-        await self.app.feedback.register_suggestion(1, 1001)
-        self.assertEqual(await self.app.feedback.vote(1001, 20, 1), (1, 0))
-
         auto_id = await self.app.automation.add_auto_message(
             guild_id=1,
             channel_id=101,
@@ -52,9 +49,7 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             use_embed=True,
         )
         await self.app.automation.set_auto_message_enabled(1, auto_id, False)
-        self.assertFalse(
-            (await self.app.automation_repo.list_auto_messages(1))[0].enabled
-        )
+        self.assertFalse((await self.app.automation_repo.list_auto_messages(1))[0].enabled)
 
         await self.app.role_menus.create(
             message_id=2001,
@@ -64,20 +59,6 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             mode="single",
         )
         self.assertEqual((await self.app.role_menus.get(2001)).role_ids, (30, 31))
-
-        panel_id = await self.app.tickets.create_panel(
-            guild_id=1,
-            category_id=3001,
-            title="Support",
-            content="Open a ticket",
-            button_label="Open",
-            mention_role_id=30,
-        )
-        reservation = await self.app.tickets.reserve(1, 20, panel_id)
-        await self.app.tickets.finalize(reservation.id, 4001)
-        self.assertEqual(
-            (await self.app.tickets.get_panel(panel_id, 1)).title, "Support"
-        )
 
         reddit_id = await self.app.reddit.add(1, 101, "r/python", images_only=True)
         await self.app.reddit_repo.mark_seen(reddit_id, "abc")
@@ -97,8 +78,8 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(help_cog)
             commands_ = help_cog._commands()
             names = {command.qualified_name for command in commands_}
-            self.assertIn("ticket add", names)
-            self.assertIn("ticket-config limit", names)
+            self.assertIn("reddit add", names)
+            self.assertIn("warn", names)
             self.assertNotIn("add", names)
             for name, items in help_cog._categories().items():
                 self.assertLessEqual(len(category_embed(name, items)), 6000)
@@ -112,13 +93,11 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             parse_feed(malicious, "python")
 
     def test_reddit_embed_and_feed_prefer_full_image(self) -> None:
-        feed = """<feed xmlns="http://www.w3.org/2005/Atom"><entry><author><name>/u/test</name></author><content type="html">&lt;a href="https://i.redd.it/original.jpg"&gt;&lt;img src="https://preview.redd.it/thumb.jpg?width=320" /&gt;&lt;/a&gt;</content><id>t3_abc</id><link href="https://www.reddit.com/r/python/comments/abc/post/"/><published>2026-08-27T12:00:00Z</published><title>A long post title</title></entry></feed>"""
-        self.assertEqual(
-            parse_feed(feed, "python")[0].image_url, "https://i.redd.it/original.jpg"
+        feed = """<feed xmlns="http://www.w3.org/2005/Atom"><entry><author><name>/u/test</name></author><content type="html">&lt;a href="https://i.redd.it/original.jpg"&gt;&lt;img src="https://preview.redd.it/thumb.jpg?width=320" /&gt;&lt;/a&gt;</content><id>t3_abc</id><link href="https://www.reddit.com/r/python/comments/abc/post/"/><published>2026-08-27T12:00:00Z</published><title>A long post title</title></entry></feed>"""  # noqa: E501
+        self.assertEqual(parse_feed(feed, "python")[0].image_url, "https://i.redd.it/original.jpg")
+        preview_only = feed.replace('&lt;a href="https://i.redd.it/original.jpg"&gt;', "").replace(
+            "&lt;/a&gt;", ""
         )
-        preview_only = feed.replace(
-            '&lt;a href="https://i.redd.it/original.jpg"&gt;', ""
-        ).replace("&lt;/a&gt;", "")
         self.assertEqual(
             parse_feed(preview_only, "python")[0].image_url,
             "https://i.redd.it/thumb.jpg",
@@ -146,9 +125,7 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
         cog = object.__new__(RedditCog)
         cog.bot = SimpleNamespace(
             app=SimpleNamespace(reddit_repo=repository),
-            get_guild=lambda _guild_id: SimpleNamespace(
-                get_channel=lambda _channel_id: channel
-            ),
+            get_guild=lambda _guild_id: SimpleNamespace(get_channel=lambda _channel_id: channel),
         )
         post = RedditPost(
             id="without-image",
@@ -174,6 +151,18 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         channel.send.assert_not_awaited()
         repository.mark_seen.assert_awaited_once_with(1, "without-image")
+
+    async def test_reddit_oauth_poll_groups_subreddits_into_one_request(self) -> None:
+        client = RedditClient(self.settings)
+        client._newest_oauth = AsyncMock(return_value=[])
+        with patch.object(
+            RedditClient,
+            "has_oauth_credentials",
+            new_callable=lambda: property(lambda _: True),
+        ):
+            result = await client.newest_many(["python", "learnpython", "python"])
+        self.assertEqual(result, {"python": [], "learnpython": []})
+        client._newest_oauth.assert_awaited_once_with("python+learnpython", 100)
 
 
 if __name__ == "__main__":

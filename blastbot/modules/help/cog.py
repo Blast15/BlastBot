@@ -14,22 +14,16 @@ from blastbot.shared.ui import SafeView
 CATEGORY_NAMES = {
     "Automation": "⚡ Tự động hóa",
     "Configuration": "⚙️ Cấu hình",
-    "Feedback": "💡 Góp ý",
     "Help": "📚 Trợ giúp",
     "Moderation": "🛡️ Kiểm duyệt",
     "Reddit": "📰 Reddit",
     "Roles": "🎭 Role",
-    "Tickets": "🎫 Ticket",
 }
 
 
 def _category(command: app_commands.Command[object, ..., object]) -> str:
     binding = command.binding
-    return (
-        binding.__class__.__name__.removesuffix("Cog")
-        if binding is not None
-        else "Khác"
-    )
+    return binding.__class__.__name__.removesuffix("Cog") if binding is not None else "Khác"
 
 
 def _footer(card: discord.Embed) -> discord.Embed:
@@ -38,8 +32,6 @@ def _footer(card: discord.Embed) -> discord.Embed:
 
 
 def _access_label(command: app_commands.Command[object, ..., object]) -> str:
-    if command.qualified_name.startswith("ticket "):
-        return "🎫 Ticket staff/owner"
     parent_permissions = command.parent.default_permissions if command.parent else None
     if command.default_permissions or parent_permissions:
         return "🔒 Quản trị"
@@ -48,9 +40,7 @@ def _access_label(command: app_commands.Command[object, ..., object]) -> str:
 
 def _usage(command: app_commands.Command[object, ..., object]) -> str:
     arguments = " ".join(
-        f"<{parameter.display_name}>"
-        if parameter.required
-        else f"[{parameter.display_name}]"
+        f"<{parameter.display_name}>" if parameter.required else f"[{parameter.display_name}]"
         for parameter in command.parameters
     )
     return f"/{command.qualified_name}{f' {arguments}' if arguments else ''}"
@@ -123,29 +113,19 @@ class HelpCog(commands.Cog):
         return sorted(commands_, key=lambda item: item.qualified_name)
 
     def _categories(self) -> dict[str, list[app_commands.Command[object, ..., object]]]:
-        categories: dict[str, list[app_commands.Command[object, ..., object]]] = (
-            defaultdict(list)
-        )
+        categories: dict[str, list[app_commands.Command[object, ..., object]]] = defaultdict(list)
         for command in self._commands():
             categories[_category(command)].append(command)
         return dict(categories)
 
-    @app_commands.command(
-        name="help", description="Xem hướng dẫn và danh sách slash command"
-    )
-    @app_commands.describe(command="Tên lệnh, ví dụ: reddit add hoặc ticket limit")
-    async def help(
-        self, interaction: discord.Interaction, command: str | None = None
-    ) -> None:
+    @app_commands.command(name="help", description="Xem hướng dẫn và danh sách slash command")
+    @app_commands.describe(command="Tên lệnh, ví dụ: reddit add hoặc warn")
+    async def help(self, interaction: discord.Interaction, command: str | None = None) -> None:
         commands_ = self._commands()
         if command:
             normalized = command.strip().lstrip("/").casefold()
             selected = next(
-                (
-                    item
-                    for item in commands_
-                    if item.qualified_name.casefold() == normalized
-                ),
+                (item for item in commands_ if item.qualified_name.casefold() == normalized),
                 None,
             )
             if selected is None:
@@ -157,9 +137,7 @@ class HelpCog(commands.Cog):
                     ephemeral=True,
                 )
                 return
-            card = info(
-                f"/{selected.qualified_name}", selected.description or "Không có mô tả."
-            )
+            card = info(f"/{selected.qualified_name}", selected.description or "Không có mô tả.")
             card.add_field(
                 name="Cách dùng",
                 value=f"`{_usage(selected)}`",
@@ -200,9 +178,7 @@ class HelpCog(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         needle = current.casefold().strip().lstrip("/")
         return [
-            app_commands.Choice(
-                name=f"/{item.qualified_name}", value=item.qualified_name
-            )
+            app_commands.Choice(name=f"/{item.qualified_name}", value=item.qualified_name)
             for item in self._commands()
             if needle in item.qualified_name.casefold()
         ][:25]
