@@ -235,12 +235,13 @@ class RedditCog(commands.Cog):
         grouped: dict[str, list[RedditSubscription]] = defaultdict(list)
         for row in rows:
             grouped[row.subreddit].append(row)
+        try:
+            fetched = await self.client.newest_many(list(grouped))
+        except (aiohttp.ClientError, RuntimeError):
+            logger.exception("Failed to poll Reddit feeds")
+            return
         for subreddit, subscriptions in grouped.items():
-            try:
-                posts = await self.client.newest(subreddit)
-            except (aiohttp.ClientError, RuntimeError):
-                logger.exception("Failed to poll r/%s", subreddit)
-                continue
+            posts = fetched.get(subreddit, [])
             for row in subscriptions:
                 await self._deliver(row, posts)
 

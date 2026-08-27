@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,7 @@ from blastbot.core.config import Settings
 logger = logging.getLogger(__name__)
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+SUBREDDIT_FROM_LINK = re.compile(r"/r/([^/]+)/", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +154,8 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
         link = link_node.get("href") if link_node is not None else None
         if not raw_id or not title or not link:
             continue
+        link_match = SUBREDDIT_FROM_LINK.search(link)
+        post_subreddit = link_match.group(1).lower() if link_match else subreddit.lower()
         author = (entry.findtext(f"{ATOM}author/{ATOM}name") or "[deleted]").strip()
         author = author.removeprefix("/u/").removeprefix("u/")
         content = entry.findtext(f"{ATOM}content") or ""
@@ -159,7 +163,7 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
         posts.append(
             RedditPost(
                 id=post_id,
-                subreddit=subreddit,
+                subreddit=post_subreddit,
                 title=title,
                 author=author,
                 permalink=link,
@@ -183,6 +187,7 @@ class RedditClient:
         self._token_lock = asyncio.Lock()
         self._keyless_lock = asyncio.Lock()
         self._last_keyless_request = 0.0
+        self._keyless_blocked_until = 0.0
 
     @property
     def has_oauth_credentials(self) -> bool:
@@ -260,29 +265,78 @@ class RedditClient:
                 posts.append(post)
         return posts
 
-    async def _newest_feed(self, subreddit: str, limit: int) -> list[RedditPost]:
+    @staticmethod
+    def _rate_limit_delay(headers: aiohttp.typedefs.LooseHeaders) -> float:
+        for name in ("Retry-After", "x-ratelimit-reset"):
+            value = headers.get(name) if hasattr(headers, "get") else None
+            try:
+                if value is not None:
+                    return min(max(float(value), 1.0), 120.0)
+            except (TypeError, ValueError):
+                continue
+        return 60.0
+
+    async def _newest_feed_path(self, path: str, fallback_subreddit: str, limit: int) -> list[RedditPost]:
         if not self._settings.reddit_keyless_fallback:
             raise RuntimeError("Reddit OAuth credentials are missing and RSS fallback is disabled")
         async with self._keyless_lock:
-            elapsed = time.monotonic() - self._last_keyless_request
-            if elapsed < 7.0:
-                await asyncio.sleep(7.0 - elapsed)
-            session = self._get_session()
-            url = f"https://www.reddit.com/r/{quote(subreddit, safe='')}/new/.rss"
-            async with session.get(
-                url,
-                headers={"Accept": "application/atom+xml, application/xml;q=0.9"},
-                params={"limit": min(max(limit, 1), 25)},
-            ) as response:
-                self._last_keyless_request = time.monotonic()
-                if response.status == 429:
-                    retry_after = response.headers.get("Retry-After", "unknown")
-                    raise RuntimeError(
-                        f"Reddit RSS rate limit reached; retry after {retry_after}s"
-                    )
-                response.raise_for_status()
-                feed = await response.text()
-        return parse_feed(feed, subreddit)
+            for attempt in range(2):
+                now = time.monotonic()
+                wait_for = max(
+                    self._keyless_blocked_until - now,
+                    7.0 - (now - self._last_keyless_request),
+                    0.0,
+                )
+                if wait_for:
+                    await asyncio.sleep(wait_for)
+                session = self._get_session()
+                url = f"https://www.reddit.com/r/{path}/new.rss"
+                async with session.get(
+                    url,
+                    headers={"Accept": "application/atom+xml, application/xml;q=0.9"},
+                    params={"limit": min(max(limit, 1), 100)},
+                ) as response:
+                    self._last_keyless_request = time.monotonic()
+                    if response.status == 429:
+                        delay = self._rate_limit_delay(response.headers) + 1.0
+                        self._keyless_blocked_until = time.monotonic() + delay
+                        if attempt == 0:
+                            logger.warning("Reddit RSS rate limited; retrying in %.0f seconds", delay)
+                            continue
+                        raise RuntimeError(
+                            f"Reddit RSS rate limit persisted after retry ({delay:.0f}s)"
+                        )
+                    response.raise_for_status()
+                    feed = await response.text()
+                    remaining = response.headers.get("x-ratelimit-remaining")
+                    try:
+                        if remaining is not None and float(remaining) < 1.0:
+                            self._keyless_blocked_until = time.monotonic() + self._rate_limit_delay(
+                                response.headers
+                            )
+                    except ValueError:
+                        pass
+                    return parse_feed(feed, fallback_subreddit)
+        return []
+
+    async def _newest_feed(self, subreddit: str, limit: int) -> list[RedditPost]:
+        return await self._newest_feed_path(quote(subreddit, safe=""), subreddit, limit)
+
+    async def newest_many(self, subreddits: list[str], *, limit: int = 100) -> dict[str, list[RedditPost]]:
+        names = list(dict.fromkeys(name.lower() for name in subreddits))
+        grouped = {name: [] for name in names}
+        if not names:
+            return grouped
+        if self.has_oauth_credentials:
+            for name in names:
+                grouped[name] = await self._newest_oauth(name, min(limit, 100))
+            return grouped
+        combined_path = "+".join(quote(name, safe="") for name in names)
+        posts = await self._newest_feed_path(combined_path, names[0], limit)
+        for post in posts:
+            if post.subreddit.lower() in grouped:
+                grouped[post.subreddit.lower()].append(post)
+        return grouped
 
     async def newest(self, subreddit: str, *, limit: int = 25) -> list[RedditPost]:
         if self.has_oauth_credentials:
