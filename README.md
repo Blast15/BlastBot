@@ -2,7 +2,7 @@
 
 BlastBot là Discord bot đa năng viết bằng Python, tập trung vào moderation, role, automation và theo dõi Reddit. Dự án dùng slash command, SQLite bất đồng bộ và cấu hình hoàn toàn qua biến môi trường.
 
-**Phiên bản hiện tại:** `4.0.0`
+**Phiên bản hiện tại:** `4.0.1`
 
 ## Tính năng
 
