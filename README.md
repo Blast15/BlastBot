@@ -1,6 +1,6 @@
 # BlastBot
 
-**Phiên bản hiện tại: `v2.1.0`**
+**Phiên bản hiện tại: `v2.2.0`**
 
 BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
 
@@ -87,6 +87,7 @@ REDDIT_CLIENT_ID=
 REDDIT_CLIENT_SECRET=
 REDDIT_USER_AGENT=BlastBot/1.0 (Discord Reddit monitor)
 REDDIT_POLL_INTERVAL=120
+REDDIT_KEYLESS_FALLBACK=true
 FEATURE_MODERATION=true
 FEATURE_TICKETS=true
 FEATURE_AUTOMATION=true
@@ -98,10 +99,17 @@ FEATURE_REDDIT=true
 
 ### Theo dõi Reddit
 
-Tạo một Reddit application loại **script** tại trang preferences/apps của Reddit, sau đó điền
-`REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`. Nên đổi `REDDIT_USER_AGENT` thành chuỗi nhận diện
-riêng cho bot của bạn. Bot gom các subscription cùng subreddit vào một request và mặc định kiểm
-tra mỗi 120 giây để tránh vượt rate limit.
+Mặc định bot vẫn hoạt động khi để trống `REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`: bot tự dùng
+RSS công khai của subreddit nhờ `REDDIT_KEYLESS_FALLBACK=true`. Chế độ này không cần API key,
+nhưng có thể bị Reddit giới hạn theo IP và một số bài sẽ không có ảnh đầy đủ trong RSS.
+
+Nếu có Reddit application loại **script**, hãy điền `REDDIT_CLIENT_ID` và
+`REDDIT_CLIENT_SECRET`; bot sẽ tự ưu tiên OAuth để có metadata và ảnh ổn định hơn. Nên đổi
+`REDDIT_USER_AGENT` thành chuỗi nhận diện riêng. Bot gom các subscription cùng subreddit vào một
+request, kiểm tra mặc định mỗi 120 giây và tự giãn request ở chế độ không key để hạn chế lỗi 429.
+
+Đặt `REDDIT_KEYLESS_FALLBACK=false` nếu muốn tắt hoàn toàn chế độ RSS và chỉ cho module chạy khi
+có OAuth credential.
 
 Các slash command dành cho người có quyền **Manage Server**:
 

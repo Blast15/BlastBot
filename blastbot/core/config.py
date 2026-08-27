@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     reddit_poll_interval: int = Field(
         default=120, alias="REDDIT_POLL_INTERVAL", ge=60, le=3600
     )
+    reddit_keyless_fallback: bool = Field(default=True, alias="REDDIT_KEYLESS_FALLBACK")
 
     feature_moderation: bool = Field(default=True, alias="FEATURE_MODERATION")
     feature_tickets: bool = Field(default=True, alias="FEATURE_TICKETS")
@@ -50,6 +51,11 @@ class Settings(BaseSettings):
     feature_roles: bool = Field(default=True, alias="FEATURE_ROLES")
     feature_context_menus: bool = Field(default=True, alias="FEATURE_CONTEXT_MENUS")
     feature_reddit: bool = Field(default=True, alias="FEATURE_REDDIT")
+
+    @field_validator("owner_id", "dev_guild_id", mode="before")
+    @classmethod
+    def empty_optional_id(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("discord_token")
     @classmethod

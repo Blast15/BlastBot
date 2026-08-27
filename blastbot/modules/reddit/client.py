@@ -3,16 +3,21 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import quote
+from xml.etree import ElementTree
 
 import aiohttp
 
 from blastbot.core.config import Settings
 
 logger = logging.getLogger(__name__)
+
+ATOM = "{http://www.w3.org/2005/Atom}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +101,79 @@ def parse_post(data: dict[str, Any]) -> RedditPost | None:
     )
 
 
+class _FeedImageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.images: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "img":
+            return
+        image = _http_url(dict(attrs).get("src"))
+        if image:
+            self.images.append(image)
+
+
+def _feed_image(content: str) -> str | None:
+    parser = _FeedImageParser()
+    parser.feed(content)
+    preferred = [
+        url
+        for url in parser.images
+        if any(
+            host in url
+            for host in ("preview.redd.it", "i.redd.it", "external-preview.redd.it")
+        )
+    ]
+    candidates = preferred or parser.images
+    return candidates[-1] if candidates else None
+
+
+def _feed_datetime(value: str | None) -> datetime:
+    if value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        except ValueError:
+            pass
+    return datetime.now(UTC)
+
+
+def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
+    try:
+        root = ElementTree.fromstring(xml)
+    except ElementTree.ParseError as exc:
+        raise RuntimeError("Reddit returned an invalid RSS feed") from exc
+
+    posts: list[RedditPost] = []
+    for entry in root.findall(f"{ATOM}entry"):
+        raw_id = (entry.findtext(f"{ATOM}id") or "").strip()
+        title = (entry.findtext(f"{ATOM}title") or "").strip()
+        link_node = entry.find(f"{ATOM}link")
+        link = link_node.get("href") if link_node is not None else None
+        if not raw_id or not title or not link:
+            continue
+        author = (entry.findtext(f"{ATOM}author/{ATOM}name") or "[deleted]").strip()
+        author = author.removeprefix("/u/").removeprefix("u/")
+        content = entry.findtext(f"{ATOM}content") or ""
+        post_id = raw_id.removeprefix("t3_").rsplit("/", 1)[-1]
+        posts.append(
+            RedditPost(
+                id=post_id,
+                subreddit=subreddit,
+                title=title,
+                author=author,
+                permalink=link,
+                created_at=_feed_datetime(
+                    entry.findtext(f"{ATOM}published") or entry.findtext(f"{ATOM}updated")
+                ),
+                text=None,
+                image_url=_feed_image(content),
+                flair=None,
+            )
+        )
+    return posts
+
+
 class RedditClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -103,6 +181,21 @@ class RedditClient:
         self._token: str | None = None
         self._token_expires_at = datetime.min.replace(tzinfo=UTC)
         self._token_lock = asyncio.Lock()
+        self._keyless_lock = asyncio.Lock()
+        self._last_keyless_request = 0.0
+
+    @property
+    def has_oauth_credentials(self) -> bool:
+        secret = self._settings.reddit_client_secret
+        return bool(
+            self._settings.reddit_client_id
+            and secret is not None
+            and secret.get_secret_value()
+        )
+
+    @property
+    def mode(self) -> str:
+        return "OAuth" if self.has_oauth_credentials else "RSS không key"
 
     async def close(self) -> None:
         if self._session is not None:
@@ -143,7 +236,7 @@ class RedditClient:
             self._token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
             return token
 
-    async def newest(self, subreddit: str, *, limit: int = 25) -> list[RedditPost]:
+    async def _newest_oauth(self, subreddit: str, limit: int) -> list[RedditPost]:
         token = await self._access_token()
         session = self._get_session()
         url = f"https://oauth.reddit.com/r/{quote(subreddit, safe='')}/new"
@@ -166,3 +259,32 @@ class RedditClient:
             if post is not None:
                 posts.append(post)
         return posts
+
+    async def _newest_feed(self, subreddit: str, limit: int) -> list[RedditPost]:
+        if not self._settings.reddit_keyless_fallback:
+            raise RuntimeError("Reddit OAuth credentials are missing and RSS fallback is disabled")
+        async with self._keyless_lock:
+            elapsed = time.monotonic() - self._last_keyless_request
+            if elapsed < 7.0:
+                await asyncio.sleep(7.0 - elapsed)
+            session = self._get_session()
+            url = f"https://www.reddit.com/r/{quote(subreddit, safe='')}/new/.rss"
+            async with session.get(
+                url,
+                headers={"Accept": "application/atom+xml, application/xml;q=0.9"},
+                params={"limit": min(max(limit, 1), 25)},
+            ) as response:
+                self._last_keyless_request = time.monotonic()
+                if response.status == 429:
+                    retry_after = response.headers.get("Retry-After", "unknown")
+                    raise RuntimeError(
+                        f"Reddit RSS rate limit reached; retry after {retry_after}s"
+                    )
+                response.raise_for_status()
+                feed = await response.text()
+        return parse_feed(feed, subreddit)
+
+    async def newest(self, subreddit: str, *, limit: int = 25) -> list[RedditPost]:
+        if self.has_oauth_credentials:
+            return await self._newest_oauth(subreddit, limit)
+        return await self._newest_feed(subreddit, limit)

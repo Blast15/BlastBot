@@ -59,17 +59,15 @@ class RedditCog(commands.Cog):
         self.bot = bot
         self.client = RedditClient(bot.app.settings)
         self.poll.change_interval(seconds=bot.app.settings.reddit_poll_interval)
-        secret = bot.app.settings.reddit_client_secret
         self.configured = bool(
-            bot.app.settings.reddit_client_id
-            and secret is not None
-            and secret.get_secret_value()
+            self.client.has_oauth_credentials or bot.app.settings.reddit_keyless_fallback
         )
         if self.configured:
             self.poll.start()
+            logger.info("Reddit monitoring started in %s mode", self.client.mode)
         else:
             logger.warning(
-                "Reddit monitoring is enabled but credentials are missing; polling is paused"
+                "Reddit monitoring is paused: OAuth credentials are missing and RSS fallback is disabled"
             )
 
     async def cog_unload(self) -> None:
@@ -91,7 +89,7 @@ class RedditCog(commands.Cog):
             await interaction.response.send_message(
                 embed=error(
                     "Reddit chưa được cấu hình",
-                    "Hãy đặt `REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`, sau đó restart bot.",
+                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, sau đó restart bot.",
                 ),
                 ephemeral=True,
             )
@@ -105,7 +103,7 @@ class RedditCog(commands.Cog):
             await interaction.followup.send(
                 embed=error(
                     "Không thể kết nối Reddit",
-                    "Kiểm tra `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` và tên cộng đồng rồi thử lại.",
+                    f"Đang dùng **{self.client.mode}**. Kiểm tra tên cộng đồng hoặc thử lại sau nếu Reddit đang giới hạn request.",
                 ),
                 ephemeral=True,
             )
@@ -116,7 +114,8 @@ class RedditCog(commands.Cog):
         await interaction.followup.send(
             embed=success(
                 "Đã bật theo dõi Reddit",
-                f"Bài mới từ **r/{name}** sẽ được gửi vào {channel.mention}.\nID cấu hình: `{subscription_id}`",
+                f"Bài mới từ **r/{name}** sẽ được gửi vào {channel.mention}.\n"
+                f"Chế độ: **{self.client.mode}** · ID: `{subscription_id}`",
             ),
             ephemeral=True,
         )
@@ -174,7 +173,7 @@ class RedditCog(commands.Cog):
             await interaction.response.send_message(
                 embed=error(
                     "Reddit chưa được cấu hình",
-                    "Hãy đặt `REDDIT_CLIENT_ID` và `REDDIT_CLIENT_SECRET`, sau đó restart bot.",
+                    "Hãy bật `REDDIT_KEYLESS_FALLBACK` hoặc cấu hình Reddit OAuth, sau đó restart bot.",
                 ),
                 ephemeral=True,
             )
