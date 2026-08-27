@@ -99,6 +99,7 @@ class RedditSubscription(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger)
     subreddit: Mapped[str] = mapped_column(String(64), index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    images_only: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen_post_id: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow

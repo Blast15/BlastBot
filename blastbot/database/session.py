@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -41,6 +41,21 @@ class Database:
         """Create missing runtime tables and indexes without a separate migration tool."""
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+            reddit_columns = await connection.run_sync(
+                lambda sync_connection: {
+                    column["name"]
+                    for column in inspect(sync_connection).get_columns(
+                        "reddit_subscriptions"
+                    )
+                }
+            )
+            if "images_only" not in reddit_columns:
+                await connection.execute(
+                    text(
+                        "ALTER TABLE reddit_subscriptions "
+                        "ADD COLUMN images_only BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
             # These indexes protect ticket invariants on databases upgraded from
             # the legacy bot, where the tables may already exist.
             await connection.execute(

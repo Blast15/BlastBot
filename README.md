@@ -1,6 +1,6 @@
 # BlastBot
 
-**Phiên bản hiện tại: `v3.0.0`**
+**Phiên bản hiện tại: `v3.1.0`**
 
 BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
 
@@ -112,7 +112,7 @@ có OAuth credential.
 
 Các slash command dành cho người có quyền **Manage Server**:
 
-- `/reddit add subreddit channel`: chọn cộng đồng và kênh nhận bài mới.
+- `/reddit add subreddit channel images_only`: chọn cộng đồng, kênh nhận bài mới và có thể chỉ nhận bài có ảnh.
 - `/reddit list`: xem toàn bộ cấu hình của server.
 - `/reddit toggle subscription_id enabled`: tạm dừng hoặc bật lại.
 - `/reddit remove subscription_id`: xóa cấu hình.

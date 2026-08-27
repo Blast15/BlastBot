@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from defusedxml.common import DefusedXmlException
 
@@ -10,7 +13,8 @@ from blastbot.core.context import build_context
 from blastbot.core.extensions import enabled_extensions
 from blastbot.modules.help.cog import category_embed
 from blastbot.modules.moderation.service import ModerationRecord
-from blastbot.modules.reddit.client import parse_feed
+from blastbot.modules.reddit.client import RedditPost, parse_feed
+from blastbot.modules.reddit.cog import RedditCog, reddit_embed
 
 
 class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
@@ -75,10 +79,11 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             (await self.app.tickets.get_panel(panel_id, 1)).title, "Support"
         )
 
-        reddit_id = await self.app.reddit.add(1, 101, "r/python")
+        reddit_id = await self.app.reddit.add(1, 101, "r/python", images_only=True)
         await self.app.reddit_repo.mark_seen(reddit_id, "abc")
         rows = await self.app.reddit_repo.list_for_guild(1)
         self.assertEqual(rows[0].last_seen_post_id, "abc")
+        self.assertTrue(rows[0].images_only)
 
     async def test_extensions_and_help(self) -> None:
         bot = BlastBot(self.app)
@@ -105,6 +110,70 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
         malicious = """<?xml version="1.0"?><!DOCTYPE feed [<!ENTITY xxe "blocked">]><feed xmlns="http://www.w3.org/2005/Atom"><title>&xxe;</title></feed>"""
         with self.assertRaises(DefusedXmlException):
             parse_feed(malicious, "python")
+
+    def test_reddit_embed_and_feed_prefer_full_image(self) -> None:
+        feed = """<feed xmlns="http://www.w3.org/2005/Atom"><entry><author><name>/u/test</name></author><content type="html">&lt;a href="https://i.redd.it/original.jpg"&gt;&lt;img src="https://preview.redd.it/thumb.jpg?width=320" /&gt;&lt;/a&gt;</content><id>t3_abc</id><link href="https://www.reddit.com/r/python/comments/abc/post/"/><published>2026-08-27T12:00:00Z</published><title>A long post title</title></entry></feed>"""
+        self.assertEqual(
+            parse_feed(feed, "python")[0].image_url, "https://i.redd.it/original.jpg"
+        )
+        preview_only = feed.replace(
+            '&lt;a href="https://i.redd.it/original.jpg"&gt;', ""
+        ).replace("&lt;/a&gt;", "")
+        self.assertEqual(
+            parse_feed(preview_only, "python")[0].image_url,
+            "https://i.redd.it/thumb.jpg",
+        )
+
+        post = RedditPost(
+            id="abc",
+            subreddit="python",
+            title="A **long** post title",
+            author="test",
+            permalink="https://www.reddit.com/comments/abc",
+            created_at=datetime.now(UTC),
+            text=None,
+            image_url="https://i.redd.it/original.jpg",
+            flair=None,
+        )
+        card = reddit_embed(post)
+        self.assertIsNone(card.title)
+        self.assertEqual(card.description, "**A \\*\\*long\\*\\* post title**")
+        self.assertEqual(card.image.url, post.image_url)
+
+    async def test_reddit_images_only_skips_post_and_marks_it_seen(self) -> None:
+        channel = SimpleNamespace(send=AsyncMock())
+        repository = SimpleNamespace(mark_seen=AsyncMock(), set_enabled=AsyncMock())
+        cog = object.__new__(RedditCog)
+        cog.bot = SimpleNamespace(
+            app=SimpleNamespace(reddit_repo=repository),
+            get_guild=lambda _guild_id: SimpleNamespace(
+                get_channel=lambda _channel_id: channel
+            ),
+        )
+        post = RedditPost(
+            id="without-image",
+            subreddit="python",
+            title="Text post",
+            author="test",
+            permalink="https://www.reddit.com/comments/without-image",
+            created_at=datetime.now(UTC),
+            text="content",
+            image_url=None,
+            flair=None,
+        )
+        row = SimpleNamespace(
+            id=1,
+            guild_id=1,
+            channel_id=101,
+            images_only=True,
+            last_seen_post_id="previous",
+        )
+
+        with patch("blastbot.modules.reddit.cog.discord.TextChannel", object):
+            await cog._deliver(row, [post])
+
+        channel.send.assert_not_awaited()
+        repository.mark_seen.assert_awaited_once_with(1, "without-image")
 
 
 if __name__ == "__main__":

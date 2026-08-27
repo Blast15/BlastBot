@@ -10,10 +10,19 @@ class RedditRepository:
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    async def create(self, guild_id: int, channel_id: int, subreddit: str) -> int:
+    async def create(
+        self,
+        guild_id: int,
+        channel_id: int,
+        subreddit: str,
+        images_only: bool = False,
+    ) -> int:
         async with self._database.session() as session, session.begin():
             row = RedditSubscription(
-                guild_id=guild_id, channel_id=channel_id, subreddit=subreddit
+                guild_id=guild_id,
+                channel_id=channel_id,
+                subreddit=subreddit,
+                images_only=images_only,
             )
             session.add(row)
             await session.flush()

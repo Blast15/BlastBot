@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 def reddit_embed(post: RedditPost) -> discord.Embed:
-    description = post.text
-    if description and len(description) > 700:
-        description = description[:697].rstrip() + "…"
+    title = discord.utils.escape_markdown(post.title)
+    body = post.text
+    if body and len(body) > 900:
+        body = body[:897].rstrip() + "…"
+    description = f"**{title}**" + (f"\n\n{body}" if body else "")
     card = discord.Embed(
-        title=post.title[:256],
-        url=post.permalink,
         description=description,
         color=0xFF4500,
         timestamp=post.created_at,
@@ -83,7 +83,9 @@ class RedditCog(commands.Cog):
 
     @reddit.command(name="add", description="Theo dõi bài mới của một cộng đồng Reddit")
     @app_commands.describe(
-        subreddit="Ví dụ: python hoặc r/python", channel="Kênh nhận bài mới"
+        subreddit="Ví dụ: python hoặc r/python",
+        channel="Kênh nhận bài mới",
+        images_only="Bỏ qua bài viết không có ảnh",
     )
     @require_guild_permissions(manage_guild=True)
     async def add(
@@ -91,6 +93,7 @@ class RedditCog(commands.Cog):
         interaction: discord.Interaction,
         subreddit: str,
         channel: discord.TextChannel,
+        images_only: bool = False,
     ) -> None:
         if interaction.guild_id is None:
             return
@@ -118,7 +121,7 @@ class RedditCog(commands.Cog):
             )
             return
         subscription_id = await self.bot.app.reddit.add(
-            interaction.guild_id, channel.id, name
+            interaction.guild_id, channel.id, name, images_only
         )
         if posts:
             await self.bot.app.reddit_repo.mark_seen(subscription_id, posts[0].id)
@@ -126,6 +129,7 @@ class RedditCog(commands.Cog):
             embed=success(
                 "Đã bật theo dõi Reddit",
                 f"Bài mới từ **r/{name}** sẽ được gửi vào {channel.mention}.\n"
+                f"Chỉ bài có ảnh: **{'Có' if images_only else 'Không'}**\n"
                 f"Chế độ: **{self.client.mode}** · ID: `{subscription_id}`",
             ),
             ephemeral=True,
@@ -144,7 +148,9 @@ class RedditCog(commands.Cog):
             )
             return
         lines = [
-            f"`{row.id}` • **r/{row.subreddit}** → <#{row.channel_id}> • {'✅' if row.enabled else '⏸️'}"
+            f"`{row.id}` • **r/{row.subreddit}** → <#{row.channel_id}> • "
+            f"{'🖼️ chỉ ảnh • ' if row.images_only else ''}"
+            f"{'✅' if row.enabled else '⏸️'}"
             for row in rows
         ]
         await interaction.response.send_message(
@@ -248,8 +254,11 @@ class RedditCog(commands.Cog):
                 extra={"guild_id": row.guild_id},
             )
             return
-        last_sent_id = row.last_seen_post_id
+        last_processed_id = row.last_seen_post_id
         for post in reversed(unseen[-10:]):
+            if row.images_only and not post.image_url:
+                last_processed_id = post.id
+                continue
             try:
                 await channel.send(embed=reddit_embed(post))
             except discord.HTTPException:
@@ -257,9 +266,9 @@ class RedditCog(commands.Cog):
                     "Failed to send Reddit post", extra={"guild_id": row.guild_id}
                 )
                 break
-            last_sent_id = post.id
-        if last_sent_id != row.last_seen_post_id:
-            await self.bot.app.reddit_repo.mark_seen(row.id, last_sent_id)
+            last_processed_id = post.id
+        if last_processed_id != row.last_seen_post_id:
+            await self.bot.app.reddit_repo.mark_seen(row.id, last_processed_id)
 
     @tasks.loop(seconds=120)
     async def poll(self) -> None:

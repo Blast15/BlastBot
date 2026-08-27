@@ -28,7 +28,13 @@ class RedditService:
     def __init__(self, repository: RedditRepository) -> None:
         self.repository = repository
 
-    async def add(self, guild_id: int, channel_id: int, subreddit: str) -> int:
+    async def add(
+        self,
+        guild_id: int,
+        channel_id: int,
+        subreddit: str,
+        images_only: bool = False,
+    ) -> int:
         name = normalize_subreddit(subreddit)
         rows = await self.repository.list_for_guild(guild_id)
         if len(rows) >= self.MAX_SUBSCRIPTIONS:
@@ -41,7 +47,7 @@ class RedditService:
                 "subreddit already followed", f"Server đã theo dõi **r/{name}** rồi."
             )
         try:
-            return await self.repository.create(guild_id, channel_id, name)
+            return await self.repository.create(guild_id, channel_id, name, images_only)
         except IntegrityError as exc:
             raise ConflictError(
                 "subreddit already followed", f"Server đã theo dõi **r/{name}** rồi."

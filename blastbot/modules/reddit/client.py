@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import aiohttp
 from defusedxml import ElementTree
@@ -42,6 +42,13 @@ def _http_url(value: object) -> str | None:
     return url if url.startswith(("https://", "http://")) else None
 
 
+def _full_size_image(url: str) -> str:
+    parts = urlsplit(url)
+    if parts.hostname == "preview.redd.it":
+        return urlunsplit((parts.scheme, "i.redd.it", parts.path, "", ""))
+    return url
+
+
 def extract_image(data: dict[str, Any]) -> str | None:
     direct = _http_url(data.get("url_overridden_by_dest"))
     if direct and direct.lower().split("?", 1)[0].endswith(
@@ -57,7 +64,7 @@ def extract_image(data: dict[str, Any]) -> str | None:
             if isinstance(source, dict):
                 image = _http_url(source.get("url"))
                 if image:
-                    return image
+                    return _full_size_image(image)
 
     metadata = data.get("media_metadata")
     if isinstance(metadata, dict):
@@ -111,18 +118,27 @@ class _FeedImageParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.images: list[str] = []
+        self.originals: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "img":
-            return
-        image = _http_url(dict(attrs).get("src"))
-        if image:
-            self.images.append(image)
+        attributes = dict(attrs)
+        if tag.lower() == "img":
+            image = _http_url(attributes.get("src"))
+            if image:
+                self.images.append(image)
+        elif tag.lower() == "a":
+            target = _http_url(attributes.get("href"))
+            if target and target.lower().split("?", 1)[0].endswith(
+                (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            ):
+                self.originals.append(target)
 
 
 def _feed_image(content: str) -> str | None:
     parser = _FeedImageParser()
     parser.feed(content)
+    if parser.originals:
+        return _full_size_image(parser.originals[-1])
     preferred = [
         url
         for url in parser.images
@@ -132,7 +148,7 @@ def _feed_image(content: str) -> str | None:
         )
     ]
     candidates = preferred or parser.images
-    return candidates[-1] if candidates else None
+    return _full_size_image(candidates[-1]) if candidates else None
 
 
 def _feed_datetime(value: str | None) -> datetime:
