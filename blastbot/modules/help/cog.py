@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from blastbot import __version__
 from blastbot.core.bot import BlastBot
 from blastbot.shared.embeds import info
 from blastbot.shared.ui import SafeView
@@ -86,8 +87,10 @@ class HelpCog(commands.Cog):
         summary = "\n".join(
             f"**{name}** · {len(items)} lệnh" for name, items in sorted(categories.items())
         )
+        card = info("BlastBot Help", f"Có **{total}** lệnh.\n\n{summary}")
+        card.set_footer(text=f"BlastBot v{__version__}")
         await interaction.response.send_message(
-            embed=info("BlastBot Help", f"Có **{total}** lệnh.\n\n{summary}"),
+            embed=card,
             view=HelpView(self.bot, categories),
             ephemeral=True,
         )

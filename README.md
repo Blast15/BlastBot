@@ -1,5 +1,7 @@
 # BlastBot
 
+**Phiên bản hiện tại: `v2.1.0`**
+
 BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
 
 Repository này là bản source tối giản dành cho việc chạy bot trực tiếp. Database SQLite được khởi tạo tự động khi bot khởi động, không cần chạy migration thủ công.

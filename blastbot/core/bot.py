@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import discord
 from discord.ext import commands
 
+from blastbot import __version__
 from blastbot.core.config import SyncMode
 from blastbot.core.context import AppContext
 from blastbot.core.error_handler import PrefixErrorHandler, handle_app_command_error
@@ -73,7 +74,8 @@ class BlastBot(commands.Bot):
             return
         logger.info("Bot ready as %s (%s), guilds=%d", self.user, self.user.id, len(self.guilds))
         await self.change_presence(
-            activity=discord.Game(name="/help | BlastBot"), status=discord.Status.online
+            activity=discord.Game(name=f"/help | BlastBot v{__version__}"),
+            status=discord.Status.online,
         )
 
     async def on_error(self, event_method: str, *args: object, **kwargs: object) -> None:
