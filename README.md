@@ -1,164 +1,176 @@
-# BlastBot 🚀
+# BlastBot
 
-Discord bot hiện đại viết bằng `discord.py`, tập trung vào moderation và feedback, với slash commands là chính (vẫn hỗ trợ prefix commands).
+BlastBot là Discord bot đa chức năng được viết bằng Python, tập trung vào kiến trúc module rõ ràng, dễ vận hành và dễ mở rộng.
 
-## ✨ Tính năng
+Repository này là bản source tối giản dành cho việc chạy bot trực tiếp. Database SQLite được khởi tạo tự động khi bot khởi động, không cần chạy migration thủ công.
 
-- **Slash commands** với autocomplete cho lý do moderation
-- **Moderation**: kick, ban, softban, timeout, clear, temprole
-- **Cảnh cáo**: warn và theo dõi số lần cảnh cáo (`/warnings`)
-- **Quản lý role**: xem thông tin, thêm/xóa role
-- **Context menus**: thao tác chuột phải trên user và message
-- **Feedback**: modal góp ý với voting persistent (lưu qua restart)
-- **Database**: SQLite bất đồng bộ (`aiosqlite`) ở chế độ WAL, có cache config
-- **Error handling** tập trung với thông báo thân thiện
-- **Logging** ra console và file UTF-8 (`bot.log`)
+## Tính năng chính
 
-## 🏗️ Cấu trúc
+- Moderation và warning system.
+- Ticket system với panel, staff, blacklist, transcript, claim và autoclose.
+- Role management và role menu.
+- Feedback / suggestion system.
+- Automation và greeting configuration.
+- Context menu interactions.
+- Slash-command help system.
+- Guild-specific configuration.
+- Feature flags cho từng module.
 
-```
-BlastBot/
-├── main.py              # Entry point, class BlastBot
-├── cogs/                # Command groups (auto-discovery)
-│   ├── core/            # Help
-│   ├── interactions/    # Context menus
-│   ├── moderation/      # kick, ban, softban, timeout, clear, warn, temprole
-│   └── utilities/       # Role management, feedback
-├── events/              # Event handlers (error handler cho prefix commands)
-├── utils/               # database, embeds, views, modals, error_handler, config
-├── tests/               # Unit tests
-└── data/                # SQLite database (tạo tự động)
-```
+## Yêu cầu
 
-## 📦 Cài đặt
+- Python 3.13 được khuyến nghị.
+- Discord Bot Token.
 
-**Yêu cầu:** Python 3.12+ và một [Discord Bot Token](https://discord.com/developers/applications).
+## Cài đặt
+
+Clone repository:
 
 ```bash
-# 1. Clone
-git clone <repository-url>
+git clone https://github.com/Blast15/BlastBot.git
 cd BlastBot
+```
 
-# 2. Virtual environment
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+Tạo virtual environment:
 
-# 3. Dependencies
+### Windows
+
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\activate
+```
+
+### Linux / macOS
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+Cài dependency:
+
+```bash
 pip install -r requirements.txt
-# Dev tools (tùy chọn): pip install -e ".[dev]"
+```
 
-# 4. Cấu hình
-cp .env.example .env             # rồi điền token vào .env
+## Cấu hình
 
-# 5. Chạy
+Sao chép `.env.example` thành `.env`:
+
+### Windows
+
+```powershell
+copy .env.example .env
+```
+
+### Linux / macOS
+
+```bash
+cp .env.example .env
+```
+
+Sau đó chỉnh các giá trị cần thiết:
+
+```env
+DISCORD_TOKEN=your_bot_token
+BOT_PREFIX=!
+OWNER_ID=
+DEV_GUILD_ID=
+DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
+LOG_LEVEL=INFO
+LOG_JSON=false
+SYNC_MODE=none
+TRANSCRIPT_MESSAGE_LIMIT=2000
+FEATURE_MODERATION=true
+FEATURE_TICKETS=true
+FEATURE_AUTOMATION=true
+FEATURE_FEEDBACK=true
+FEATURE_ROLES=true
+FEATURE_CONTEXT_MENUS=true
+```
+
+### Command sync
+
+`SYNC_MODE` hỗ trợ:
+
+- `none`: không tự sync command khi startup.
+- `dev_guild`: sync vào guild được khai báo bằng `DEV_GUILD_ID`, phù hợp khi phát triển.
+- `global`: sync global command tree.
+
+Trong quá trình phát triển nên dùng `dev_guild` để command cập nhật nhanh hơn.
+
+## Chạy bot
+
+```bash
 python main.py
 ```
 
-## ⚙️ Biến môi trường
-
-| Biến | Bắt buộc | Mặc định | Mô tả |
-|------|----------|----------|-------|
-| `DISCORD_TOKEN` | ✅ | — | Bot token |
-| `DB_PATH` | | `./data/bot.db` | Đường dẫn file SQLite |
-| `GUILD_ID` | | — | Guild ID để sync command tức thì (dev) |
-| `BOT_PREFIX` | | `!` | Prefix cho prefix commands |
-| `OWNER_ID` | | — | User ID cho lệnh owner-only |
-
-> Để trống `GUILD_ID` sẽ sync command global (có thể mất tới ~1 giờ để cập nhật).
-
-## 🎮 Lệnh
-
-**Moderation**
-- `/kick <member> [reason]` — Kick member khỏi server
-- `/ban <member> [reason] [delete_messages]` — Ban member
-- `/softban <member> [reason] [delete_messages]` — Ban rồi unban ngay để xóa tin nhắn
-- `/timeout <member> <duration> [reason]` — Timeout member
-- `/clear <amount>` — Xóa hàng loạt tin nhắn
-- `/temprole <member> <role> <duration> [reason]` — Gán role tạm thời, tự gỡ khi hết hạn
-- `/warn <member> [reason]` — Cảnh cáo member
-- `/warnings <member>` — Xem số cảnh cáo
-
-**Role**
-- `/roleinfo <role>` — Xem thông tin chi tiết role
-- `/roleadd <member> <role>` — Thêm role cho member
-- `/roleremove <member> <role>` — Xóa role khỏi member
-
-**Khác**
-- `/help [command]` — Danh sách lệnh hoặc chi tiết một lệnh
-- `/suggest` — Gửi góp ý cho server
-
-**Context menus** (chuột phải vào user/message): Thông tin User, Xem Avatar, Báo cáo User, Báo cáo Message, Bookmark Message.
-
-## 🗃️ Database
-
-SQLite bất đồng bộ qua `aiosqlite`, chạy ở chế độ **WAL** với một connection dùng chung (được tuần tự hóa bằng lock cho các thao tác ghi). Tables tự tạo ở lần chạy đầu.
-
-Config của guild được cache với TTL 5 phút:
-
-```python
-bot.db.invalidate_cache(guild_id)   # xóa cache một guild
-bot.db.invalidate_cache()           # xóa toàn bộ cache
-bot.db.get_cache_stats()            # thống kê cache
-```
-
-## 🛠️ Phát triển
-
-Lệnh được tổ chức thành cogs trong `cogs/` và **tự động được load** khi khởi động. Các moderation cog kế thừa `BaseModerationCog` để dùng chung logic validate quyền, hierarchy và logging.
-
-**Thêm lệnh mới** — nếu tạo domain package mới `cogs/foo/__init__.py`, bot sẽ tự động phát hiện và load package. Nếu thêm cog mới vào domain hiện có, import và đăng ký cog trong `cogs/<domain>/__init__.py`:
-
-```python
-# cogs/utilities/__init__.py
-from .example import Example
-from .feedback import Feedback
-from .roles import RolesCommand
-
-
-async def setup(bot):
-    for cog_cls in (RolesCommand, Feedback, Example):
-        if bot.get_cog(cog_cls.__name__) is None:
-            await bot.add_cog(cog_cls(bot))
-```
-
-**Chất lượng code** (cần `pip install -e ".[dev]"`):
+Hoặc:
 
 ```bash
-ruff check --fix .    # lint + tự sửa
-ruff format .         # format
-pytest                # chạy test
+python -m blastbot
 ```
 
-> Mẹo: đặt `GUILD_ID` trong `.env` để sync command tức thì khi dev, thay vì chờ global sync (~1 giờ).
+Khi dùng cấu hình SQLite mặc định, database sẽ được tạo tại:
 
-## 📝 Logging
+```text
+data/bot.db
+```
 
-Log ghi đồng thời ra **console** và file **`bot.log`** (UTF-8). Các mức: `INFO`, `WARNING`, `ERROR`, `DEBUG`.
+Các bảng cần thiết được kiểm tra và tạo tự động khi bot khởi động.
 
-> Log được tự động xoay vòng với `RotatingFileHandler` (tối đa 5MB x 5 file backup).
+## Cấu trúc source
 
-## 🐛 Khắc phục sự cố
+```text
+BlastBot/
+├── blastbot/
+│   ├── core/           # bot lifecycle, config, error handling, context
+│   ├── database/       # SQLAlchemy models và database session
+│   ├── modules/        # các feature của bot
+│   └── shared/         # thành phần dùng chung nhỏ
+├── main.py
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── .gitattributes
+├── LICENSE
+└── README.md
+```
 
-**Lệnh không xuất hiện?** Kiểm tra `GUILD_ID`, chờ global sync (tới ~1 giờ), hoặc reload Discord (Ctrl+R).
+Các feature lớn nằm trong `blastbot/modules/` và được tách theo domain thay vì gom toàn bộ logic vào một file bot duy nhất.
 
-**Lỗi database?** Đảm bảo thư mục `data/` tồn tại và ghi được; kiểm tra `DB_PATH`. Xóa `data/bot.db` để reset (sẽ mất dữ liệu).
+## Discord Developer Portal
 
-**Bot không phản hồi?** Kiểm tra `DISCORD_TOKEN`, quyền của bot trong server, và xem `bot.log`.
+Tạo application/bot tại Discord Developer Portal, lấy Bot Token và đặt vào `DISCORD_TOKEN` trong `.env`.
 
-## 🤝 Đóng góp
+Chỉ bật các privileged intents thực sự cần cho những feature bạn sử dụng. Nếu thay đổi intent hoặc quyền của bot, cần cập nhật tương ứng trong Discord Developer Portal và quyền role của bot trong server.
 
-Fork → tạo feature branch → commit → mở pull request. Vui lòng chạy `ruff` và `pytest` trước khi gửi.
+## Database
 
-## 📄 License
+Mặc định BlastBot dùng SQLite thông qua `aiosqlite`:
 
-Phát hành theo **GNU AGPL v3.0** — xem [LICENSE](LICENSE).
+```env
+DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
+```
 
-> AGPL-3.0 yêu cầu: nếu bạn chạy phiên bản đã chỉnh sửa như một network service, bạn phải cung cấp mã nguồn đầy đủ cho người dùng dịch vụ đó.
+Không commit thư mục `data/`, file `.db` hoặc `.env` lên GitHub.
 
-## 🔗 Liên kết
+## Cập nhật source trên server
 
-- [discord.py docs](https://discordpy.readthedocs.io/)
-- [Discord Developer Portal](https://discord.com/developers/applications)
+```bash
+git pull origin main
+pip install -r requirements.txt
+python main.py
+```
 
----
+Nếu chạy bot bằng process manager như systemd, PM2 hoặc Docker bên ngoài repository này, restart process sau khi pull.
 
-Made with ❤️ using discord.py
+## Bảo mật
+
+- Không commit `.env` hoặc Discord token.
+- Không hard-code token/API key vào source.
+- Nếu token từng bị public, reset token ngay trong Discord Developer Portal.
+- Chỉ cấp cho bot các Discord permissions thực sự cần thiết.
+
+## License
+
+Dự án được phát hành theo giấy phép [MIT](LICENSE).
