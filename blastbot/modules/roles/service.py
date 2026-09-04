@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import ClassVar
 
-from blastbot.core.errors import ResourceNotFoundError, ValidationError
+from blastbot.core.errors import PermissionDeniedError, ResourceNotFoundError, ValidationError
 from blastbot.database.models import RoleMenu
 from blastbot.modules.roles.repository import RoleMenuRepository
 
@@ -60,10 +60,15 @@ class RoleMenuService:
             mode=mode,
         )
 
-    async def get(self, message_id: int) -> RoleMenuData:
+    async def get(self, message_id: int, guild_id: int) -> RoleMenuData:
         row = await self.repository.get(message_id)
         if row is None:
             raise ResourceNotFoundError("role menu not found", "Role menu không còn tồn tại.")
+        if row.guild_id != guild_id:
+            raise PermissionDeniedError(
+                "cross-guild role menu access",
+                "Role menu không thuộc server này.",
+            )
         return self._data(row)
 
     async def list_for_guild(self, guild_id: int) -> list[RoleMenuData]:

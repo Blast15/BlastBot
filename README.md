@@ -2,11 +2,11 @@
 
 BlastBot là Discord bot đa năng viết bằng Python, tập trung vào moderation, role, automation và theo dõi Reddit. Dự án dùng slash command, SQLite bất đồng bộ và cấu hình hoàn toàn qua biến môi trường.
 
-**Phiên bản hiện tại:** `4.0.1`
+**Phiên bản hiện tại:** `4.0.2`
 
 ## Tính năng
 
-- Moderation: kick, ban, softban, timeout, purge, warn và temporary role.
+- Moderation: kick, ban, softban, timeout, clear, warn và temporary role.
 - Report User / Report Message qua context menu, gửi về moderation log channel.
 - Role management và persistent self-assign role menu.
 - Welcome, goodbye và auto-message định kỳ.
@@ -65,7 +65,7 @@ Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát tr
 
 - `/help [command]`
 - `/config logchannel`, `/config view`
-- `/kick`, `/ban`, `/softban`, `/timeout`, `/purge`, `/warn`, `/warnings`, `/temprole`
+- `/kick`, `/ban`, `/softban`, `/timeout`, `/clear`, `/warn`, `/warnings`, `/temprole`
 - `/roleadd`, `/roleremove`, `/rolemenu create|list|delete`
 - `/greeting welcome|goodbye|disable|test`
 - `/automsg add|list|delete|toggle`
@@ -87,6 +87,24 @@ main.py            # Entrypoint
 
 Service được giữ ở nơi có validation hoặc quy tắc nghiệp vụ; repository chịu trách nhiệm transaction và query. SQLite bật WAL, foreign keys và busy timeout khi kết nối.
 
+## Độ tin cậy khi vận hành
+
+Reddit và auto-message dùng delivery **at-least-once**: bot gửi Discord trước rồi mới lưu
+cursor. Nếu gửi thành công nhưng SQLite lỗi, lần poll sau có thể gửi trùng bài/tin vừa gửi;
+thứ tự này chủ ý ưu tiên duplicate có thể nhận biết thay vì mất message âm thầm. Cursor Reddit
+được lưu theo từng subscription và cập nhật sau từng bài đã gửi hoặc đã bỏ qua bởi `images_only`.
+
+OAuth Reddit catch up riêng từng subreddit, tối đa 3 trang × 100 bài mỗi poll và gửi theo thứ tự
+cũ đến mới. Nếu cursor cũ nằm ngoài cửa sổ đó, bot ghi warning và bỏ phần backlog cũ hơn cửa
+sổ thay vì âm thầm bỏ qua. RSS công khai không cung cấp pagination tương đương; ceiling là một
+feed tối đa 100 bài và bot áp dụng cùng warning/policy khi không còn thấy cursor.
+
+Schema được nâng tự động bằng các migration có version, chạy theo thứ tự và idempotent khi bot
+khởi động. Deployment SQLite hỗ trợ một process bot ghi vào mỗi database. Cần persist `data/`;
+`logs/` nên được giữ hoặc chuyển sang log collector. Để backup nhất quán, dừng bot rồi sao chép
+file database (hoặc dùng lệnh `.backup` của SQLite); để restore, dừng bot, thay file trong `data/`,
+rồi khởi động lại để migration còn thiếu tự chạy.
+
 ## Development
 
 ```bash
@@ -96,7 +114,10 @@ python -m compileall -q blastbot main.py
 python -c "import blastbot"
 ```
 
-Production nên chạy bot dưới process supervisor hoặc container có restart policy, mount bền vững thư mục `data/` và `logs/`, giữ một process ghi vào mỗi SQLite database, và xử lý `SIGTERM` để Discord/HTTP/database đóng sạch.
+Production nên chạy bot dưới process supervisor hoặc container có restart policy, mount bền vững
+thư mục `data/` và `logs/`, và gửi `SIGTERM` khi deploy để Discord/HTTP/database đóng sạch. Dùng
+Python 3.11 trở lên. Nên sync command ở môi trường dev trước; chỉ bật `SYNC_MODE=global` cho lần
+publish cần thiết rồi trả về `none` để tránh sync không chủ ý mỗi lần restart.
 
 ## License
 

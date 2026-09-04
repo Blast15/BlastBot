@@ -24,6 +24,10 @@ class JsonFormatter(logging.Formatter):
             "interaction_id",
             "module",
             "operation",
+            "moderator_id",
+            "role_id",
+            "subreddit",
+            "post_count",
             "duration_ms",
             "error_type",
         ):

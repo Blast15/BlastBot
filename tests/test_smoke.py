@@ -5,15 +5,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from defusedxml.common import DefusedXmlException
-
 from blastbot.core.bot import BlastBot
 from blastbot.core.config import Settings
 from blastbot.core.context import build_context
 from blastbot.core.extensions import enabled_extensions
 from blastbot.modules.help.cog import category_embed
 from blastbot.modules.moderation.service import ModerationRecord
-from blastbot.modules.reddit.client import RedditClient, RedditPost, parse_feed
+from blastbot.modules.reddit.client import RedditClient, RedditPost, RedditProtocolError, parse_feed
 from blastbot.modules.reddit.cog import RedditCog, reddit_embed
 
 
@@ -58,7 +56,7 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             role_ids=(30, 31),
             mode="single",
         )
-        self.assertEqual((await self.app.role_menus.get(2001)).role_ids, (30, 31))
+        self.assertEqual((await self.app.role_menus.get(2001, 1)).role_ids, (30, 31))
 
         reddit_id = await self.app.reddit.add(1, 101, "r/python", images_only=True)
         await self.app.reddit_repo.mark_seen(reddit_id, "abc")
@@ -89,7 +87,7 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     def test_reddit_feed_parser_rejects_entities(self) -> None:
         malicious = """<?xml version="1.0"?><!DOCTYPE feed [<!ENTITY xxe "blocked">]><feed xmlns="http://www.w3.org/2005/Atom"><title>&xxe;</title></feed>"""
-        with self.assertRaises(DefusedXmlException):
+        with self.assertRaises(RedditProtocolError):
             parse_feed(malicious, "python")
 
     def test_reddit_embed_and_feed_prefer_full_image(self) -> None:
@@ -152,7 +150,7 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
         channel.send.assert_not_awaited()
         repository.mark_seen.assert_awaited_once_with(1, "without-image")
 
-    async def test_reddit_oauth_poll_groups_subreddits_into_one_request(self) -> None:
+    async def test_reddit_poll_fetches_each_subreddit_fairly(self) -> None:
         client = RedditClient(self.settings)
         client._newest_oauth = AsyncMock(return_value=[])
         with patch.object(
@@ -162,7 +160,10 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await client.newest_many(["python", "learnpython", "python"])
         self.assertEqual(result, {"python": [], "learnpython": []})
-        client._newest_oauth.assert_awaited_once_with("python+learnpython", 100)
+        self.assertEqual(
+            client._newest_oauth.await_args_list,
+            [unittest.mock.call("python", 100), unittest.mock.call("learnpython", 100)],
+        )
 
 
 if __name__ == "__main__":

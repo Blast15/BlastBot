@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from blastbot.database.models import GuildConfig, ModerationLog, TempRole, UserState
 from blastbot.database.session import Database
@@ -48,13 +50,21 @@ class ModerationRepository:
         reason: str | None,
     ) -> int:
         async with self._database.session() as session, session.begin():
-            row = await session.get(UserState, (guild_id, user_id))
-            if row is None:
-                row = UserState(guild_id=guild_id, user_id=user_id, warnings=1)
-                session.add(row)
-            else:
-                row.warnings += 1
-            await session.flush()
+            dialect = self._database.engine.dialect.name
+            insert_statement = (
+                postgresql_insert(UserState)
+                if dialect == "postgresql"
+                else sqlite_insert(UserState)
+            )
+            statement = (
+                insert_statement.values(guild_id=guild_id, user_id=user_id, warnings=1)
+                .on_conflict_do_update(
+                    index_elements=[UserState.guild_id, UserState.user_id],
+                    set_={"warnings": UserState.warnings + 1},
+                )
+                .returning(UserState.warnings)
+            )
+            count = await session.scalar(statement)
             session.add(
                 ModerationLog(
                     guild_id=guild_id,
@@ -65,7 +75,9 @@ class ModerationRepository:
                     reason=reason,
                 )
             )
-            return row.warnings
+            if count is None:  # pragma: no cover - RETURNING is guaranteed on supported DBs
+                raise RuntimeError("warning upsert did not return a count")
+            return count
 
     async def get_warnings(self, guild_id: int, user_id: int) -> int:
         async with self._database.session() as session:
@@ -88,6 +100,10 @@ class ModerationRepository:
                 )
             else:
                 row.expires_at = expires_at
+
+    async def get_temp_role(self, guild_id: int, user_id: int, role_id: int) -> TempRole | None:
+        async with self._database.session() as session:
+            return await session.get(TempRole, (guild_id, user_id, role_id))
 
     async def remove_temp_role(self, guild_id: int, user_id: int, role_id: int) -> None:
         async with self._database.session() as session, session.begin():

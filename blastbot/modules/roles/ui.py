@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 import discord
+from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
 from blastbot.shared.embeds import error, success
 from blastbot.shared.permissions import validate_role_manage
 from blastbot.shared.ui import SafeView
+
+logger = logging.getLogger(__name__)
 
 
 class RoleMenuSelect(discord.ui.Select):
@@ -38,7 +43,13 @@ class RoleMenuSelect(discord.ui.Select):
             or not isinstance(interaction.user, discord.Member)
         ):
             return
-        menu = await self.bot.app.role_menus.get(interaction.message.id)
+        menu = await self.bot.app.role_menus.get(interaction.message.id, interaction.guild.id)
+        if menu.guild_id != interaction.guild.id or menu.channel_id != interaction.channel_id:
+            await interaction.response.send_message(
+                embed=error("Role menu không hợp lệ", "Role menu không thuộc server/channel này."),
+                ephemeral=True,
+            )
+            return
         allowed = set(menu.role_ids)
         selected = [int(value) for value in self.values if int(value) in allowed]
         if not selected:
@@ -70,13 +81,10 @@ class RoleMenuSelect(discord.ui.Select):
 
         if menu.mode == "single":
             chosen = manageable[0]
-            remove_roles = [
-                role for role in interaction.user.roles if role.id in allowed and role != chosen
-            ]
-            if remove_roles:
-                await interaction.user.remove_roles(*remove_roles, reason="Role menu single-select")
-            if chosen not in interaction.user.roles:
-                await interaction.user.add_roles(chosen, reason="Role menu single-select")
+            roles = [role for role in interaction.user.roles if role.id not in allowed]
+            roles.append(chosen)
+            # A single Discord edit keeps single-select invariant under concurrent clicks.
+            await interaction.user.edit(roles=roles, reason="Role menu single-select")
             text = f"Role hiện tại: {chosen.mention}."
         else:
             to_add = [role for role in manageable if role not in interaction.user.roles]
@@ -148,13 +156,35 @@ class RoleMenuSetupSelect(discord.ui.RoleSelect):
         message = await self.channel.send(
             embed=card, view=RoleMenuView(self.bot, roles, mode=self.mode)
         )
-        await self.bot.app.role_menus.create(
-            message_id=message.id,
-            guild_id=interaction.guild.id,
-            channel_id=self.channel.id,
-            role_ids=tuple(role.id for role in roles),
-            mode=self.mode,
-        )
+        try:
+            await self.bot.app.role_menus.create(
+                message_id=message.id,
+                guild_id=interaction.guild.id,
+                channel_id=self.channel.id,
+                role_ids=tuple(role.id for role in roles),
+                mode=self.mode,
+            )
+        except SQLAlchemyError:
+            logger.exception(
+                "Role-menu persistence failed; deleting created Discord message",
+                extra={
+                    "guild_id": interaction.guild.id,
+                    "channel_id": self.channel.id,
+                    "operation": "rolemenu_create",
+                },
+            )
+            try:
+                await message.delete()
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to delete orphan role-menu message after persistence failure",
+                    extra={
+                        "guild_id": interaction.guild.id,
+                        "channel_id": self.channel.id,
+                        "operation": "rolemenu_compensate",
+                    },
+                )
+            raise
         await interaction.response.edit_message(
             embed=success("Đã tạo role menu", f"Role menu đã gửi tại {message.jump_url}."),
             view=None,

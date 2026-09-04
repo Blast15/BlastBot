@@ -4,6 +4,7 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from weakref import WeakValueDictionary
 
 import discord
 from discord import app_commands
@@ -11,6 +12,7 @@ from discord.ext import commands, tasks
 from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
+from blastbot.database.models import TempRole
 from blastbot.modules.moderation.service import ModerationRecord
 from blastbot.modules.moderation.ui import ConfirmView
 from blastbot.shared.embeds import error, info, success, warning
@@ -21,6 +23,8 @@ from blastbot.shared.permissions import (
     validate_role_manage,
 )
 from blastbot.shared.responder import send_interaction
+from blastbot.shared.time import ensure_utc
+from blastbot.shared.validation import require_text
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +49,13 @@ async def _reason_autocomplete(
 
 
 class ModerationCog(commands.Cog):
+    SOFTBAN_UNBAN_ATTEMPTS = 3
+
     def __init__(self, bot: BlastBot) -> None:
         self.bot = bot
+        self._temp_role_locks: WeakValueDictionary[tuple[int, int, int], asyncio.Lock] = (
+            WeakValueDictionary()
+        )
         self.temp_role_cleanup.add_exception_type(SQLAlchemyError)
         self.temp_role_cleanup.start()
 
@@ -70,7 +79,7 @@ class ModerationCog(commands.Cog):
             moderator_id=interaction.user.id,
             target_id=target.id,
             target_str=str(target),
-            reason=reason,
+            reason=require_text(reason, maximum=1000) if reason else None,
         )
 
     async def _validate_target(
@@ -132,6 +141,139 @@ class ModerationCog(commands.Cog):
             except discord.HTTPException:
                 logger.warning("Failed to send moderation log", exc_info=True)
 
+    async def _persist_action(
+        self, action: str, record: ModerationRecord, **extra: object
+    ) -> bool:
+        try:
+            await self.bot.app.moderation.record_action(action, record, **extra)
+        except SQLAlchemyError:
+            logger.exception(
+                "Discord moderation action succeeded but audit persistence failed",
+                extra={
+                    "guild_id": record.guild_id,
+                    "user_id": record.target_id,
+                    "operation": action,
+                    "moderator_id": record.moderator_id,
+                },
+            )
+            return False
+        return True
+
+    async def _unban_after_softban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+    ) -> bool:
+        guild = interaction.guild
+        if guild is None:
+            return False
+        for attempt in range(self.SOFTBAN_UNBAN_ATTEMPTS):
+            try:
+                await guild.unban(member, reason=f"Softban by {interaction.user}")
+                return True
+            except discord.NotFound:
+                logger.warning(
+                    "Softban unban returned not found; target is already not banned",
+                    extra={
+                        "guild_id": guild.id,
+                        "user_id": member.id,
+                        "moderator_id": interaction.user.id,
+                        "operation": "SOFTBAN_UNBAN",
+                    },
+                )
+                return True
+            except discord.Forbidden:
+                logger.exception(
+                    "Softban ban succeeded but unban is forbidden",
+                    extra={
+                        "guild_id": guild.id,
+                        "user_id": member.id,
+                        "moderator_id": interaction.user.id,
+                        "operation": "SOFTBAN_UNBAN",
+                    },
+                )
+                return False
+            except discord.HTTPException as exc:
+                transient = exc.status == 429 or exc.status >= 500
+                if not transient or attempt + 1 == self.SOFTBAN_UNBAN_ATTEMPTS:
+                    logger.exception(
+                        "Softban ban succeeded but unban failed%s",
+                        " after all retries" if transient else " with a non-retryable error",
+                        extra={
+                            "guild_id": guild.id,
+                            "user_id": member.id,
+                            "moderator_id": interaction.user.id,
+                            "operation": "SOFTBAN_UNBAN",
+                        },
+                    )
+                    return False
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return False  # pragma: no cover
+
+    async def _grant_temp_role(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        role: discord.Role,
+        duration_minutes: int,
+        reason: str | None,
+    ) -> datetime:
+        guild = interaction.guild
+        if guild is None:
+            raise app_commands.NoPrivateMessage()
+        lock = self._temp_role_lock(guild.id, member.id, role.id)
+        async with lock:
+            previous = await self.bot.app.moderation_repo.get_temp_role(
+                guild.id, member.id, role.id
+            )
+            expires = await self.bot.app.moderation.add_temp_role(
+                guild_id=guild.id,
+                user_id=member.id,
+                role_id=role.id,
+                duration_minutes=duration_minutes,
+            )
+            try:
+                await member.add_roles(
+                    role, reason=f"Temporary role by {interaction.user}: {reason or 'N/A'}"
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                try:
+                    if previous is None:
+                        await self.bot.app.moderation_repo.remove_temp_role(
+                            guild.id, member.id, role.id
+                        )
+                    else:
+                        await self.bot.app.moderation_repo.put_temp_role(
+                            guild_id=guild.id,
+                            user_id=member.id,
+                            role_id=role.id,
+                            expires_at=previous.expires_at,
+                        )
+                except SQLAlchemyError:
+                    logger.exception(
+                        "Failed to restore temp-role intent after Discord add failure",
+                        extra={
+                            "guild_id": guild.id,
+                            "user_id": member.id,
+                            "role_id": role.id,
+                            "operation": "TEMPROLE_COMPENSATE",
+                        },
+                    )
+                raise
+            return expires
+
+    def _temp_role_lock(self, guild_id: int, user_id: int, role_id: int) -> asyncio.Lock:
+        locks = getattr(self, "_temp_role_locks", None)
+        if locks is None:
+            locks = self._temp_role_locks = WeakValueDictionary()
+        key = (guild_id, user_id, role_id)
+        lock = locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            # Weak values keep per-target serialization without retaining inactive keys.
+            locks[key] = lock
+        return lock
+
     @app_commands.command(name="kick", description="Kick một thành viên khỏi server")
     @app_commands.guild_only()
     @app_commands.default_permissions(kick_members=True)
@@ -150,12 +292,19 @@ class ModerationCog(commands.Cog):
             interaction, "Xác nhận kick", f"Kick {member.mention} khỏi server?"
         ):
             return
+        record = self._record(interaction, member, reason)
         await member.kick(reason=f"{reason or 'Không có lý do'} | by {interaction.user}")
-        await self.bot.app.moderation.record_action(
-            "KICK", self._record(interaction, member, reason)
-        )
+        audit_ok = await self._persist_action("KICK", record)
         await interaction.edit_original_response(
-            embed=success("Đã kick", f"Đã kick {member.mention}."), view=None
+            embed=(
+                success("Đã kick", f"Đã kick {member.mention}.")
+                if audit_ok
+                else warning(
+                    "Đã kick, nhưng audit lỗi",
+                    f"{member.mention} đã bị kick; bản ghi database chưa được lưu.",
+                )
+            ),
+            view=None,
         )
         await self._emit_log(interaction, action="KICK", target=member, reason=reason)
 
@@ -178,17 +327,26 @@ class ModerationCog(commands.Cog):
             interaction, "Xác nhận ban", f"Ban {member.mention} khỏi server?"
         ):
             return
+        record = self._record(interaction, member, reason)
         await member.ban(
             reason=f"{reason or 'Không có lý do'} | by {interaction.user}",
             delete_message_seconds=int(delete_messages) * 86400,
         )
-        await self.bot.app.moderation.record_action(
+        audit_ok = await self._persist_action(
             "BAN",
-            self._record(interaction, member, reason),
+            record,
             delete_messages_days=int(delete_messages),
         )
         await interaction.edit_original_response(
-            embed=success("Đã ban", f"Đã ban {member.mention}."), view=None
+            embed=(
+                success("Đã ban", f"Đã ban {member.mention}.")
+                if audit_ok
+                else warning(
+                    "Đã ban, nhưng audit lỗi",
+                    f"{member.mention} đã bị ban; bản ghi database chưa được lưu.",
+                )
+            ),
+            view=None,
         )
         await self._emit_log(
             interaction,
@@ -215,19 +373,46 @@ class ModerationCog(commands.Cog):
             return
         if not await self._confirm(interaction, "Xác nhận softban", f"Softban {member.mention}?"):
             return
+        record = self._record(interaction, member, reason)
         await interaction.guild.ban(
             member,
             reason=f"{reason or 'Không có lý do'} | by {interaction.user}",
             delete_message_seconds=int(delete_messages) * 86400,
         )
-        await interaction.guild.unban(member, reason=f"Softban by {interaction.user}")
-        await self.bot.app.moderation.record_action(
-            "SOFTBAN",
-            self._record(interaction, member, reason),
-            delete_messages_days=int(delete_messages),
+        if not await self._unban_after_softban(interaction, member):
+            audit_ok = await self._persist_action(
+                "SOFTBAN_PARTIAL",
+                record,
+                delete_messages_days=int(delete_messages),
+                still_banned=True,
+            )
+            detail = f"{member.mention} vẫn đang bị ban vì bước unban thất bại."
+            if not audit_ok:
+                detail += " Bản ghi audit database cũng chưa được lưu."
+            await interaction.edit_original_response(
+                embed=error("Softban chưa hoàn tất", detail), view=None
+            )
+            await self._emit_log(
+                interaction,
+                action="SOFTBAN_PARTIAL",
+                target=member,
+                reason=reason,
+                extra="Ban thành công nhưng unban thất bại; user vẫn bị ban",
+            )
+            return
+        audit_ok = await self._persist_action(
+            "SOFTBAN", record, delete_messages_days=int(delete_messages)
         )
         await interaction.edit_original_response(
-            embed=success("Đã softban", f"Đã softban {member.mention}."), view=None
+            embed=(
+                success("Đã softban", f"Đã softban {member.mention}.")
+                if audit_ok
+                else warning(
+                    "Đã softban, nhưng audit lỗi",
+                    f"Softban {member.mention} đã hoàn tất; bản ghi database chưa được lưu.",
+                )
+            ),
+            view=None,
         )
         await self._emit_log(interaction, action="SOFTBAN", target=member, reason=reason)
 
@@ -252,17 +437,25 @@ class ModerationCog(commands.Cog):
             f"Timeout {member.mention} trong **{duration} phút**?",
         ):
             return
+        record = self._record(interaction, member, reason)
         await member.timeout(
             timedelta(minutes=int(duration)),
             reason=f"{reason or 'Không có lý do'} | by {interaction.user}",
         )
-        await self.bot.app.moderation.record_action(
+        audit_ok = await self._persist_action(
             "TIMEOUT",
-            self._record(interaction, member, reason),
+            record,
             duration_minutes=int(duration),
         )
         await interaction.edit_original_response(
-            embed=success("Đã timeout", f"Đã timeout {member.mention} trong {duration} phút."),
+            embed=(
+                success("Đã timeout", f"Đã timeout {member.mention} trong {duration} phút.")
+                if audit_ok
+                else warning(
+                    "Đã timeout, nhưng audit lỗi",
+                    f"Timeout đã áp dụng cho {member.mention}; bản ghi database chưa được lưu.",
+                )
+            ),
             view=None,
         )
         await self._emit_log(interaction, action="TIMEOUT", target=member, reason=reason)
@@ -291,9 +484,16 @@ class ModerationCog(commands.Cog):
             target_str=f"#{channel.name}",
             reason=None,
         )
-        await self.bot.app.moderation.record_action("CLEAR", record, deleted=len(deleted))
+        audit_ok = await self._persist_action("CLEAR", record, deleted=len(deleted))
         await interaction.followup.send(
-            embed=success("Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned)."),
+            embed=(
+                success("Đã xóa", f"Đã xóa **{len(deleted)}** tin nhắn (bỏ qua pinned).")
+                if audit_ok
+                else warning(
+                    "Đã xóa, nhưng audit lỗi",
+                    f"Đã xóa **{len(deleted)}** tin nhắn; bản ghi database chưa được lưu.",
+                )
+            ),
             ephemeral=True,
         )
 
@@ -320,25 +520,28 @@ class ModerationCog(commands.Cog):
                 embed=error("Không thể cấp role", problem), ephemeral=True
             )
             return
-        await member.add_roles(
-            role, reason=f"Temporary role by {interaction.user}: {reason or 'N/A'}"
+        record = self._record(interaction, member, reason)
+        expires = await self._grant_temp_role(
+            interaction, member, role, int(duration), reason
         )
-        expires = await self.bot.app.moderation.add_temp_role(
-            guild_id=interaction.guild.id,
-            user_id=member.id,
-            role_id=role.id,
-            duration_minutes=int(duration),
-        )
-        await self.bot.app.moderation.record_action(
+        audit_ok = await self._persist_action(
             "TEMPROLE",
-            self._record(interaction, member, reason),
+            record,
             role_id=role.id,
             expires_at=expires.isoformat(),
         )
         await interaction.response.send_message(
-            embed=success(
-                "Đã cấp role tạm",
-                f"{member.mention} nhận {role.mention} đến <t:{int(expires.timestamp())}:F>.",
+            embed=(
+                success(
+                    "Đã cấp role tạm",
+                    f"{member.mention} nhận {role.mention} đến <t:{int(expires.timestamp())}:F>.",
+                )
+                if audit_ok
+                else warning(
+                    "Đã cấp role, nhưng audit lỗi",
+                    f"Role tạm đã được cấp và vẫn có lịch cleanup đến "
+                    f"<t:{int(expires.timestamp())}:F>; bản ghi moderation chưa được lưu.",
+                )
             )
         )
 
@@ -375,41 +578,49 @@ class ModerationCog(commands.Cog):
             ephemeral=True,
         )
 
+    async def _cleanup_temp_roles(self, now: datetime) -> None:
+        for item in await self.bot.app.moderation_repo.expired_temp_roles(now):
+            async with self._temp_role_lock(item.guild_id, item.user_id, item.role_id):
+                current = await self.bot.app.moderation_repo.get_temp_role(
+                    item.guild_id, item.user_id, item.role_id
+                )
+                if current is None or ensure_utc(current.expires_at) > ensure_utc(now):
+                    continue
+                await self._cleanup_temp_role(current)
+
+    async def _cleanup_temp_role(self, item: TempRole) -> None:
+        guild_id = item.guild_id
+        user_id = item.user_id
+        role_id = item.role_id
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            await self.bot.app.moderation_repo.remove_temp_role(guild_id, user_id, role_id)
+            return
+        member = guild.get_member(user_id)
+        role = guild.get_role(role_id)
+        if member is None or role is None:
+            await self.bot.app.moderation_repo.remove_temp_role(guild_id, user_id, role_id)
+            return
+        try:
+            await member.remove_roles(role, reason="Temporary role expired")
+        except discord.Forbidden:
+            logger.warning(
+                "Cannot remove expired temp role",
+                extra={
+                    "guild_id": guild.id,
+                    "user_id": member.id,
+                    "operation": "temp_role_cleanup",
+                },
+            )
+            return
+        except discord.HTTPException:
+            logger.exception("Discord API error removing temp role")
+            return
+        await self.bot.app.moderation_repo.remove_temp_role(guild_id, user_id, role_id)
+
     @tasks.loop(minutes=1.0)
     async def temp_role_cleanup(self) -> None:
-        now = datetime.now(UTC)
-        for item in await self.bot.app.moderation_repo.expired_temp_roles(now):
-            guild = self.bot.get_guild(item.guild_id)
-            if guild is None:
-                await self.bot.app.moderation_repo.remove_temp_role(
-                    item.guild_id, item.user_id, item.role_id
-                )
-                continue
-            member = guild.get_member(item.user_id)
-            role = guild.get_role(item.role_id)
-            if member is None or role is None:
-                await self.bot.app.moderation_repo.remove_temp_role(
-                    item.guild_id, item.user_id, item.role_id
-                )
-                continue
-            try:
-                await member.remove_roles(role, reason="Temporary role expired")
-            except discord.Forbidden:
-                logger.warning(
-                    "Cannot remove expired temp role",
-                    extra={
-                        "guild_id": guild.id,
-                        "user_id": member.id,
-                        "operation": "temp_role_cleanup",
-                    },
-                )
-                continue
-            except discord.HTTPException:
-                logger.exception("Discord API error removing temp role")
-                continue
-            await self.bot.app.moderation_repo.remove_temp_role(
-                item.guild_id, item.user_id, item.role_id
-            )
+        await self._cleanup_temp_roles(datetime.now(UTC))
 
     @temp_role_cleanup.error
     async def temp_role_cleanup_error(self, exception: BaseException) -> None:

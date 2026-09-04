@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, insert, literal, select
 
 from blastbot.database.models import RedditSubscription
 from blastbot.database.session import Database
@@ -16,13 +16,40 @@ class RedditRepository:
         channel_id: int,
         subreddit: str,
         images_only: bool = False,
-    ) -> int:
+        limit: int | None = None,
+        initial_post_id: str | None = None,
+    ) -> int | None:
         async with self._database.session() as session, session.begin():
+            if limit is not None:
+                count = select(func.count()).select_from(RedditSubscription).where(
+                    RedditSubscription.guild_id == guild_id
+                )
+                values = select(
+                    literal(guild_id),
+                    literal(channel_id),
+                    literal(subreddit),
+                    literal(True),
+                    literal(images_only),
+                    literal(initial_post_id),
+                ).where(count.scalar_subquery() < limit)
+                statement = insert(RedditSubscription).from_select(
+                    [
+                        "guild_id",
+                        "channel_id",
+                        "subreddit",
+                        "enabled",
+                        "images_only",
+                        "last_seen_post_id",
+                    ],
+                    values,
+                ).returning(RedditSubscription.id)
+                return await session.scalar(statement)
             row = RedditSubscription(
                 guild_id=guild_id,
                 channel_id=channel_id,
                 subreddit=subreddit,
                 images_only=images_only,
+                last_seen_post_id=initial_post_id,
             )
             session.add(row)
             await session.flush()

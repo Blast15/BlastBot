@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -20,6 +21,8 @@ from blastbot.database.base import Base
 
 
 class Database:
+    SCHEMA_VERSION = 2
+
     def __init__(self, settings: Settings) -> None:
         if settings.is_sqlite:
             raw_path = settings.database_url.removeprefix("sqlite+aiosqlite:///")
@@ -51,22 +54,49 @@ class Database:
         )
 
     async def initialize_schema(self) -> None:
-        """Create missing runtime tables and indexes without a separate migration tool."""
+        """Apply ordered, idempotent schema migrations in one startup transaction."""
         async with self.engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
-            reddit_columns = await connection.run_sync(
-                lambda sync_connection: {
-                    column["name"]
-                    for column in inspect(sync_connection).get_columns("reddit_subscriptions")
-                }
-            )
-            if "images_only" not in reddit_columns:
-                await connection.execute(
-                    text(
-                        "ALTER TABLE reddit_subscriptions "
-                        "ADD COLUMN images_only BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
+            await connection.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                    "version INTEGER PRIMARY KEY, "
+                    "applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"
                 )
+            )
+            applied = set(
+                await connection.scalars(text("SELECT version FROM schema_migrations"))
+            )
+            migrations = (self._migration_create_schema, self._migration_reddit_images_only)
+            if len(migrations) != self.SCHEMA_VERSION:
+                raise RuntimeError("SCHEMA_VERSION does not match registered migrations")
+            for version, migration in enumerate(migrations, start=1):
+                if version in applied:
+                    continue
+                await migration(connection)
+                await connection.execute(
+                    text("INSERT INTO schema_migrations (version) VALUES (:version)"),
+                    {"version": version},
+                )
+
+    @staticmethod
+    async def _migration_create_schema(connection: AsyncConnection) -> None:
+        await connection.run_sync(Base.metadata.create_all)
+
+    @staticmethod
+    async def _migration_reddit_images_only(connection: AsyncConnection) -> None:
+        reddit_columns = await connection.run_sync(
+            lambda sync_connection: {
+                column["name"]
+                for column in inspect(sync_connection).get_columns("reddit_subscriptions")
+            }
+        )
+        if "images_only" not in reddit_columns:
+            await connection.execute(
+                text(
+                    "ALTER TABLE reddit_subscriptions "
+                    "ADD COLUMN images_only BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:

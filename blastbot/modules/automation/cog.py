@@ -11,7 +11,9 @@ from discord.ext import commands, tasks
 from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
+from blastbot.core.errors import ValidationError
 from blastbot.database.models import Greeting
+from blastbot.modules.automation.service import validate_greeting_template
 from blastbot.shared.embeds import error, info, success
 from blastbot.shared.permissions import require_guild_permissions
 
@@ -24,15 +26,15 @@ DEFAULT_GREETING_MESSAGES = {
 
 
 def render_greeting(template: str, member: discord.Member) -> str:
-    return template.format_map(
-        {
-            "user": str(member),
-            "user_mention": member.mention,
-            "user_name": member.display_name,
-            "server": member.guild.name,
-            "member_count": member.guild.member_count or 0,
-        }
-    )
+    values = {
+        "user": str(member),
+        "user_mention": member.mention,
+        "user_name": member.display_name,
+        "server": member.guild.name,
+        "member_count": member.guild.member_count or 0,
+    }
+    text = validate_greeting_template(template, maximum=4000).format_map(values)
+    return text
 
 
 class AutomationCog(commands.Cog):
@@ -236,7 +238,18 @@ class AutomationCog(commands.Cog):
                 ephemeral=True,
             )
             return
-        await self._send_greeting(channel, interaction.user, row)
+        try:
+            await self._send_greeting(channel, interaction.user, row)
+        except ValidationError as exc:
+            logger.warning(
+                "Stored greeting template is invalid: %s",
+                exc,
+                extra={"guild_id": interaction.guild_id, "operation": "greeting_test"},
+            )
+            await interaction.response.send_message(
+                embed=error("Template không hợp lệ", exc.user_message), ephemeral=True
+            )
+            return
         await interaction.response.send_message(
             embed=success("Đã test", f"Đã gửi thử tại {channel.mention}."),
             ephemeral=True,
@@ -245,7 +258,13 @@ class AutomationCog(commands.Cog):
     async def _send_greeting(
         self, channel: discord.TextChannel, member: discord.Member, row: Greeting
     ) -> None:
+        maximum = 4000 if row.use_embed else 2000
         text = render_greeting(row.message or "", member)
+        if len(text) > maximum:
+            raise ValidationError(
+                f"rendered greeting length {len(text)} exceeds {maximum}",
+                f"Lời chào sau khi render vượt quá {maximum} ký tự.",
+            )
         if row.use_embed:
             card = discord.Embed(
                 title=row.title or ("Chào mừng!" if row.kind == "welcome" else "Tạm biệt!"),
@@ -277,8 +296,11 @@ class AutomationCog(commands.Cog):
             if isinstance(channel, discord.TextChannel):
                 try:
                     await self._send_greeting(channel, member, row)
-                except discord.HTTPException:
-                    logger.exception("Failed to send welcome", extra={"guild_id": member.guild.id})
+                except (discord.HTTPException, ValidationError):
+                    logger.exception(
+                        "Failed to render or send welcome",
+                        extra={"guild_id": member.guild.id, "operation": "greeting_welcome"},
+                    )
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
@@ -290,12 +312,13 @@ class AutomationCog(commands.Cog):
             if isinstance(channel, discord.TextChannel):
                 try:
                     await self._send_greeting(channel, member, row)
-                except discord.HTTPException:
-                    logger.exception("Failed to send goodbye", extra={"guild_id": member.guild.id})
+                except (discord.HTTPException, ValidationError):
+                    logger.exception(
+                        "Failed to render or send goodbye",
+                        extra={"guild_id": member.guild.id, "operation": "greeting_goodbye"},
+                    )
 
-    @tasks.loop(minutes=1.0)
-    async def auto_message_loop(self) -> None:
-        now = datetime.now(UTC)
+    async def _send_due_auto_messages(self, now: datetime) -> None:
         rows = await self.bot.app.automation_repo.due_auto_messages(now)
         for row in rows:
             guild = self.bot.get_guild(row.guild_id)
@@ -325,7 +348,17 @@ class AutomationCog(commands.Cog):
             except discord.HTTPException:
                 logger.exception("Failed to send auto-message", extra={"guild_id": row.guild_id})
                 continue
-            await self.bot.app.automation_repo.mark_sent(row.id, now)
+            try:
+                await self.bot.app.automation_repo.mark_sent(row.id, now)
+            except SQLAlchemyError:
+                logger.exception(
+                    "Auto-message sent but cursor persistence failed; it may be delivered again",
+                    extra={"guild_id": row.guild_id, "operation": "automsg_mark_sent"},
+                )
+
+    @tasks.loop(minutes=1.0)
+    async def auto_message_loop(self) -> None:
+        await self._send_due_auto_messages(datetime.now(UTC))
 
     @auto_message_loop.before_loop
     async def before_auto_message_loop(self) -> None:

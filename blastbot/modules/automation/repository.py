@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, insert, literal, select
 
 from blastbot.database.models import AutoMessage, Greeting
 from blastbot.database.session import Database
@@ -48,6 +48,34 @@ class AutomationRepository:
             else:
                 row.enabled = enabled
 
+    async def create_auto_message_bounded(
+        self,
+        *,
+        guild_id: int,
+        channel_id: int,
+        content: str,
+        interval_minutes: int,
+        use_embed: bool,
+        limit: int,
+    ) -> int | None:
+        async with self._database.session() as session, session.begin():
+            count = select(func.count()).select_from(AutoMessage).where(
+                AutoMessage.guild_id == guild_id
+            )
+            values = select(
+                literal(guild_id),
+                literal(channel_id),
+                literal(content),
+                literal(interval_minutes),
+                literal(use_embed),
+                literal(True),
+            ).where(count.scalar_subquery() < limit)
+            statement = insert(AutoMessage).from_select(
+                ["guild_id", "channel_id", "content", "interval_minutes", "use_embed", "enabled"],
+                values,
+            ).returning(AutoMessage.id)
+            return await session.scalar(statement)
+
     async def create_auto_message(
         self,
         *,
@@ -57,6 +85,7 @@ class AutomationRepository:
         interval_minutes: int,
         use_embed: bool,
     ) -> int:
+        """Compatibility helper for callers that do not impose a per-guild limit."""
         async with self._database.session() as session, session.begin():
             row = AutoMessage(
                 guild_id=guild_id,

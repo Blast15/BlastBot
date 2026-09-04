@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import logging
 import re
 import time
@@ -13,8 +14,10 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import aiohttp
 from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 from blastbot.core.config import Settings
+from blastbot.core.errors import ExternalServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +38,22 @@ class RedditPost:
     flair: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class RedditBatch:
+    posts: list[RedditPost]
+    cursor_found: bool
+    ceiling_reached: bool
+
+
+class RedditProtocolError(ExternalServiceError):
+    """Reddit returned a response that does not match its documented protocol."""
+
+
 def _http_url(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     url = html.unescape(value)
-    return url if url.startswith(("https://", "http://")) else None
+    return url if len(url) <= 2048 and url.startswith(("https://", "http://")) else None
 
 
 def _full_size_image(url: str) -> str:
@@ -81,17 +95,19 @@ def extract_image(data: dict[str, Any]) -> str | None:
     return thumbnail
 
 
-def parse_post(data: dict[str, Any]) -> RedditPost | None:
+def parse_post(data: dict[str, Any]) -> RedditPost:
     post_id = data.get("id")
     title = data.get("title")
     subreddit = data.get("subreddit")
     if not all(isinstance(value, str) and value for value in (post_id, title, subreddit)):
-        return None
+        raise RedditProtocolError("Reddit post is missing id, title, or subreddit")
+    if len(post_id) > 32 or len(title) > 300 or len(subreddit) > 64:
+        raise RedditProtocolError("Reddit post contains an oversized required field")
     created = data.get("created_utc")
     try:
         created_at = datetime.fromtimestamp(float(created), tz=UTC)
-    except (TypeError, ValueError, OSError):
-        created_at = datetime.now(UTC)
+    except (TypeError, ValueError, OSError) as exc:
+        raise RedditProtocolError("Reddit post has an invalid created_utc") from exc
     permalink = data.get("permalink")
     url = (
         f"https://www.reddit.com{permalink}"
@@ -99,16 +115,24 @@ def parse_post(data: dict[str, Any]) -> RedditPost | None:
         else f"https://www.reddit.com/comments/{post_id}"
     )
     text = data.get("selftext")
+    if text is not None and not isinstance(text, str):
+        raise RedditProtocolError("Reddit post has an invalid selftext")
+    author = data.get("author")
+    if author is not None and not isinstance(author, str):
+        raise RedditProtocolError("Reddit post has an invalid author")
+    flair = data.get("link_flair_text")
+    if flair is not None and not isinstance(flair, str):
+        raise RedditProtocolError("Reddit post has an invalid flair")
     return RedditPost(
         id=post_id,
         subreddit=subreddit,
         title=title,
-        author=str(data.get("author") or "[deleted]"),
+        author=(author or "[deleted]")[:100],
         permalink=url,
         created_at=created_at,
-        text=text.strip() if isinstance(text, str) and text.strip() else None,
+        text=text.strip()[:4000] if isinstance(text, str) and text.strip() else None,
         image_url=extract_image(data),
-        flair=str(data["link_flair_text"]) if data.get("link_flair_text") else None,
+        flair=flair[:100] if flair else None,
     )
 
 
@@ -147,19 +171,19 @@ def _feed_image(content: str) -> str | None:
 
 
 def _feed_datetime(value: str | None) -> datetime:
-    if value:
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
-        except ValueError:
-            logger.debug("Reddit feed contained an invalid published timestamp: %r", value)
-    return datetime.now(UTC)
+    if not value:
+        raise RedditProtocolError("Reddit RSS entry is missing its timestamp")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError as exc:
+        raise RedditProtocolError("Reddit RSS entry has an invalid timestamp") from exc
 
 
 def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
     try:
         root = ElementTree.fromstring(xml)
-    except ElementTree.ParseError as exc:
-        raise RuntimeError("Reddit returned an invalid RSS feed") from exc
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
+        raise RedditProtocolError("Reddit returned an invalid RSS feed") from exc
 
     posts: list[RedditPost] = []
     for entry in root.findall(f"{ATOM}entry"):
@@ -167,20 +191,27 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
         title = (entry.findtext(f"{ATOM}title") or "").strip()
         link_node = entry.find(f"{ATOM}link")
         link = link_node.get("href") if link_node is not None else None
-        if not raw_id or not title or not link:
-            continue
+        if not raw_id or not title or not _http_url(link):
+            raise RedditProtocolError("Reddit RSS entry is missing required fields")
         link_match = SUBREDDIT_FROM_LINK.search(link)
         post_subreddit = link_match.group(1).lower() if link_match else subreddit.lower()
         author = (entry.findtext(f"{ATOM}author/{ATOM}name") or "[deleted]").strip()
         author = author.removeprefix("/u/").removeprefix("u/")
         content = entry.findtext(f"{ATOM}content") or ""
         post_id = raw_id.removeprefix("t3_").rsplit("/", 1)[-1]
+        if (
+            len(post_id) > 32
+            or len(title) > 300
+            or len(post_subreddit) > 64
+            or len(content) > 100_000
+        ):
+            raise RedditProtocolError("Reddit RSS entry contains an oversized field")
         posts.append(
             RedditPost(
                 id=post_id,
                 subreddit=post_subreddit,
                 title=title,
-                author=author,
+                author=author[:100],
                 permalink=link,
                 created_at=_feed_datetime(
                     entry.findtext(f"{ATOM}published") or entry.findtext(f"{ATOM}updated")
@@ -194,6 +225,9 @@ def parse_feed(xml: str, subreddit: str) -> list[RedditPost]:
 
 
 class RedditClient:
+    OAUTH_PAGE_SIZE = 100
+    MAX_CATCHUP_PAGES = 3
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._session: aiohttp.ClientSession | None = None
@@ -229,6 +263,16 @@ class RedditClient:
             )
         return self._session
 
+    @staticmethod
+    async def _json_object(response: aiohttp.ClientResponse, context: str) -> dict[str, Any]:
+        try:
+            payload = await response.json()
+        except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RedditProtocolError(f"Reddit returned invalid JSON for {context}") from exc
+        if not isinstance(payload, dict):
+            raise RedditProtocolError(f"Reddit returned non-object JSON for {context}")
+        return payload
+
     async def _access_token(self) -> str:
         client_id = self._settings.reddit_client_id
         secret = self._settings.reddit_client_secret
@@ -240,22 +284,48 @@ class RedditClient:
             if self._token and datetime.now(UTC) < self._token_expires_at:
                 return self._token
             session = self._get_session()
-            async with session.post(
-                "https://www.reddit.com/api/v1/access_token",
-                auth=aiohttp.BasicAuth(client_id, secret.get_secret_value()),
-                data={"grant_type": "client_credentials"},
-            ) as response:
-                response.raise_for_status()
-                payload = await response.json()
+            for attempt in range(2):
+                async with session.post(
+                    "https://www.reddit.com/api/v1/access_token",
+                    headers={
+                        "Authorization": aiohttp.encode_basic_auth(
+                            client_id, secret.get_secret_value()
+                        )
+                    },
+                    data={"grant_type": "client_credentials"},
+                ) as response:
+                    if (response.status == 429 or response.status >= 500) and attempt == 0:
+                        delay = (
+                            self._rate_limit_delay(response.headers)
+                            if response.status == 429
+                            else 2.0
+                        )
+                        logger.warning(
+                            "Reddit token endpoint returned %d; retrying in %.0f seconds",
+                            response.status,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    response.raise_for_status()
+                    payload = await self._json_object(response, "OAuth token")
+                    break
+            else:  # pragma: no cover - both attempts always return or raise
+                raise RuntimeError("Reddit OAuth token request failed")
             token = payload.get("access_token")
-            if not isinstance(token, str):
-                raise TypeError("Reddit did not return an access token")
-            expires_in = max(60, int(payload.get("expires_in", 3600)) - 60)
+            if not isinstance(token, str) or not token:
+                raise RedditProtocolError("Reddit did not return an access token")
+            try:
+                expires_in = max(60, int(payload.get("expires_in", 3600)) - 60)
+            except (TypeError, ValueError) as exc:
+                raise RedditProtocolError("Reddit returned an invalid token expiry") from exc
             self._token = token
             self._token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
             return token
 
-    async def _newest_oauth(self, subreddit: str, limit: int) -> list[RedditPost]:
+    async def _oauth_page(
+        self, subreddit: str, *, limit: int, after: str | None = None
+    ) -> tuple[list[RedditPost], str | None]:
         session = self._get_session()
         url = f"https://oauth.reddit.com/r/{quote(subreddit, safe='+')}/new"
         for attempt in range(2):
@@ -263,7 +333,11 @@ class RedditClient:
             async with session.get(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
-                params={"limit": min(max(limit, 1), 100), "raw_json": 1},
+                params={
+                    "limit": min(max(limit, 1), self.OAUTH_PAGE_SIZE),
+                    "raw_json": 1,
+                    **({"after": after} if after else {}),
+                },
             ) as response:
                 if response.status == 401 and attempt == 0:
                     self._token = None
@@ -281,19 +355,57 @@ class RedditClient:
                         await asyncio.sleep(delay)
                         continue
                 response.raise_for_status()
-                payload = await response.json()
+                payload = await self._json_object(response, "OAuth listing")
                 break
         else:  # pragma: no cover - both attempts always return or raise
             raise RuntimeError("Reddit OAuth request failed")
-        children = payload.get("data", {}).get("children", [])
+        listing = payload.get("data")
+        if not isinstance(listing, dict) or not isinstance(listing.get("children"), list):
+            raise RedditProtocolError("Reddit OAuth listing is missing data.children")
+        next_after = listing.get("after")
+        if next_after is not None and not isinstance(next_after, str):
+            raise RedditProtocolError("Reddit OAuth listing has an invalid after cursor")
+        children = listing["children"]
         posts: list[RedditPost] = []
         for child in children:
             if not isinstance(child, dict) or not isinstance(child.get("data"), dict):
-                continue
-            post = parse_post(child["data"])
-            if post is not None:
-                posts.append(post)
+                raise RedditProtocolError("Reddit OAuth listing contains an invalid child")
+            posts.append(parse_post(child["data"]))
+        return posts, next_after
+
+    async def _newest_oauth(self, subreddit: str, limit: int) -> list[RedditPost]:
+        posts, _ = await self._oauth_page(subreddit, limit=limit)
         return posts
+
+    async def newest_since(
+        self,
+        subreddit: str,
+        stop_ids: set[str],
+        *,
+        max_pages: int = MAX_CATCHUP_PAGES,
+    ) -> RedditBatch:
+        """Fetch newest-first posts through a bounded per-subreddit catch-up window."""
+        if not self.has_oauth_credentials:
+            posts = await self._newest_feed(subreddit, self.OAUTH_PAGE_SIZE)
+            found = not stop_ids or stop_ids <= {post.id for post in posts}
+            return RedditBatch(posts, found, bool(stop_ids and not found))
+
+        posts: list[RedditPost] = []
+        seen_ids: set[str] = set()
+        after: str | None = None
+        found_ids: set[str] = set()
+        found = not stop_ids
+        for _ in range(max_pages):
+            page, after = await self._oauth_page(
+                subreddit, limit=self.OAUTH_PAGE_SIZE, after=after
+            )
+            posts.extend(post for post in page if post.id not in seen_ids)
+            seen_ids.update(post.id for post in page)
+            found_ids.update(post.id for post in page if post.id in stop_ids)
+            found = stop_ids <= found_ids
+            if found or not after:
+                break
+        return RedditBatch(posts, found, bool(stop_ids and not found and after))
 
     @staticmethod
     def _rate_limit_delay(headers: aiohttp.typedefs.LooseHeaders) -> float:
@@ -364,18 +476,8 @@ class RedditClient:
         grouped = {name: [] for name in names}
         if not names:
             return grouped
-        if self.has_oauth_credentials:
-            combined = "+".join(names)
-            posts = await self._newest_oauth(combined, min(limit, 100))
-            for post in posts:
-                if post.subreddit.lower() in grouped:
-                    grouped[post.subreddit.lower()].append(post)
-            return grouped
-        combined_path = "+".join(quote(name, safe="") for name in names)
-        posts = await self._newest_feed_path(combined_path, names[0], limit)
-        for post in posts:
-            if post.subreddit.lower() in grouped:
-                grouped[post.subreddit.lower()].append(post)
+        for name in names:
+            grouped[name] = await self.newest(name, limit=limit)
         return grouped
 
     async def newest(self, subreddit: str, *, limit: int = 25) -> list[RedditPost]:

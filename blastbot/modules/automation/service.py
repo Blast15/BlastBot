@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import string
 from dataclasses import dataclass
 
 from blastbot.core.errors import ConflictError, ResourceNotFoundError, ValidationError
@@ -36,13 +37,16 @@ class AutomationService:
     ) -> None:
         if kind not in {"welcome", "goodbye"}:
             raise ValidationError("invalid greeting kind")
+        validated_message = validate_greeting_template(
+            message, maximum=4000 if use_embed else 2000
+        )
         await self.repository.configure_greeting(
             guild_id=guild_id,
             kind=kind,
             channel_id=channel_id,
             use_embed=use_embed,
             title=require_text(title, maximum=256) if title else None,
-            message=require_text(message, maximum=4000 if use_embed else 2000),
+            message=validated_message,
             color=color,
         )
 
@@ -60,12 +64,6 @@ class AutomationService:
         interval_minutes: int,
         use_embed: bool,
     ) -> int:
-        existing = await self.repository.list_auto_messages(guild_id)
-        if len(existing) >= self.MAX_AUTO_MESSAGES:
-            raise ConflictError(
-                "auto-message limit reached",
-                f"Server đã đạt giới hạn {self.MAX_AUTO_MESSAGES} auto-message.",
-            )
         interval = require_range(
             interval_minutes,
             minimum=self.MIN_INTERVAL_MINUTES,
@@ -73,13 +71,20 @@ class AutomationService:
             name="Chu kỳ",
         )
         text = require_text(content, maximum=4000 if use_embed else 2000)
-        return await self.repository.create_auto_message(
+        auto_id = await self.repository.create_auto_message_bounded(
             guild_id=guild_id,
             channel_id=channel_id,
             content=text,
             interval_minutes=interval,
             use_embed=use_embed,
+            limit=self.MAX_AUTO_MESSAGES,
         )
+        if auto_id is None:
+            raise ConflictError(
+                "auto-message limit reached",
+                f"Server đã đạt giới hạn {self.MAX_AUTO_MESSAGES} auto-message.",
+            )
+        return auto_id
 
     async def remove_auto_message(self, guild_id: int, auto_id: int) -> None:
         if not await self.repository.delete_auto_message(guild_id, auto_id):
@@ -88,3 +93,36 @@ class AutomationService:
     async def set_auto_message_enabled(self, guild_id: int, auto_id: int, enabled: bool) -> None:
         if not await self.repository.toggle_auto_message(guild_id, auto_id, enabled):
             raise ResourceNotFoundError("auto-message not found", "Không tìm thấy auto-message.")
+
+
+GREETING_FIELDS = frozenset({"user", "user_mention", "user_name", "server", "member_count"})
+
+
+def validate_greeting_template(template: str, *, maximum: int) -> str:
+    """Validate fields without formatting, so hostile specs cannot allocate output."""
+    text = require_text(template, maximum=maximum)
+    try:
+        parsed = tuple(string.Formatter().parse(text))
+    except ValueError as exc:
+        raise ValidationError(
+            "malformed greeting template", "Template lời chào không hợp lệ."
+        ) from exc
+    for _, field_name, format_spec, conversion in parsed:
+        if field_name is None:
+            continue
+        if field_name not in GREETING_FIELDS:
+            raise ValidationError(
+                f"unknown greeting placeholder: {field_name!r}",
+                f"Placeholder `{{{field_name}}}` không được hỗ trợ.",
+            )
+        if format_spec:
+            raise ValidationError(
+                "greeting format spec is not allowed",
+                "Template lời chào không cho phép format spec.",
+            )
+        if conversion:
+            raise ValidationError(
+                "greeting conversion is not allowed",
+                "Template lời chào không cho phép conversion.",
+            )
+    return text

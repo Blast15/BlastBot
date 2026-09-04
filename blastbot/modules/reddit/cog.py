@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from blastbot.core.bot import BlastBot
 from blastbot.database.models import RedditSubscription
-from blastbot.modules.reddit.client import RedditClient, RedditPost
+from blastbot.modules.reddit.client import RedditClient, RedditPost, RedditProtocolError
 from blastbot.modules.reddit.service import normalize_subreddit
 from blastbot.shared.embeds import error, info, success
 from blastbot.shared.permissions import require_guild_permissions
@@ -131,10 +131,12 @@ class RedditCog(commands.Cog):
             )
             return
         subscription_id = await self.bot.app.reddit.add(
-            interaction.guild_id, channel.id, name, images_only
+            interaction.guild_id,
+            channel.id,
+            name,
+            images_only,
+            posts[0].id if posts else None,
         )
-        if posts:
-            await self.bot.app.reddit_repo.mark_seen(subscription_id, posts[0].id)
         await interaction.followup.send(
             embed=success(
                 "Đã bật theo dõi Reddit",
@@ -260,41 +262,55 @@ class RedditCog(commands.Cog):
                 extra={"guild_id": row.guild_id},
             )
             return
-        last_processed_id = row.last_seen_post_id
-        for post in reversed(unseen[-10:]):
+        for post in reversed(unseen):
             if row.images_only and not post.image_url:
-                last_processed_id = post.id
+                await self.bot.app.reddit_repo.mark_seen(row.id, post.id)
                 continue
             try:
                 await channel.send(embed=reddit_embed(post))
             except discord.HTTPException:
                 logger.exception("Failed to send Reddit post", extra={"guild_id": row.guild_id})
                 break
-            last_processed_id = post.id
-        if last_processed_id != row.last_seen_post_id:
-            await self.bot.app.reddit_repo.mark_seen(row.id, last_processed_id)
+            await self.bot.app.reddit_repo.mark_seen(row.id, post.id)
 
-    @tasks.loop(seconds=120)
-    async def poll(self) -> None:
+    async def _poll_once(self) -> None:
         rows = await self.bot.app.reddit_repo.list_enabled()
         grouped: dict[str, list[RedditSubscription]] = defaultdict(list)
         for row in rows:
             grouped[row.subreddit].append(row)
-        try:
-            fetched = await self.client.newest_many(list(grouped))
-        except (aiohttp.ClientError, RuntimeError):
-            logger.exception("Failed to poll Reddit feeds")
-            return
         for subreddit, subscriptions in grouped.items():
-            posts = fetched.get(subreddit, [])
+            cursors = {row.last_seen_post_id for row in subscriptions if row.last_seen_post_id}
+            try:
+                batch = await self.client.newest_since(subreddit, cursors)
+            except (aiohttp.ClientError, RedditProtocolError, RuntimeError, TimeoutError):
+                logger.exception(
+                    "Failed to poll Reddit feed",
+                    extra={"operation": "reddit_fetch", "subreddit": subreddit},
+                )
+                continue
+            if cursors and not batch.cursor_found:
+                logger.warning(
+                    "Reddit cursor was not found (%s); older posts outside the fetched window "
+                    "are skipped",
+                    "catch-up ceiling reached" if batch.ceiling_reached else "cursor unavailable",
+                    extra={
+                        "operation": "reddit_catchup_ceiling",
+                        "subreddit": subreddit,
+                        "post_count": len(batch.posts),
+                    },
+                )
             for row in subscriptions:
                 try:
-                    await self._deliver(row, posts)
+                    await self._deliver(row, batch.posts)
                 except (discord.HTTPException, SQLAlchemyError):
                     logger.exception(
                         "Failed to process Reddit subscription",
                         extra={"guild_id": row.guild_id, "channel_id": row.channel_id},
                     )
+
+    @tasks.loop(seconds=120)
+    async def poll(self) -> None:
+        await self._poll_once()
 
     @poll.before_loop
     async def before_poll(self) -> None:
