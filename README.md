@@ -2,7 +2,7 @@
 
 BlastBot là Discord bot đa năng viết bằng Python, tập trung vào moderation, role, automation và theo dõi Reddit. Dự án dùng slash command, SQLite bất đồng bộ và cấu hình hoàn toàn qua biến môi trường.
 
-**Phiên bản hiện tại:** `4.0.3`
+**Phiên bản hiện tại:** `4.1.0`
 
 ## Tính năng
 
@@ -11,7 +11,10 @@ BlastBot là Discord bot đa năng viết bằng Python, tập trung vào modera
 - Role management và persistent self-assign role menu.
 - Welcome, goodbye và auto-message định kỳ.
 - Reddit subscription theo server, hỗ trợ OAuth hoặc RSS công khai, lọc bài có ảnh.
-- Help động, cấu hình log channel và structured logging tùy chọn.
+- Help tương tác: menu nhóm/lệnh, phân trang, tìm theo mô tả, tham số và quyền mặc định.
+- Tiện ích: ping, botinfo, serverinfo, userinfo và avatar.
+- Bình chọn Discord gốc và slowmode kênh có audit log trong database.
+- Cấu hình log channel và structured logging tùy chọn.
 
 ## Cài đặt
 
@@ -63,7 +66,10 @@ Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát tr
 
 ## Command chính
 
-- `/help [command]`
+- `/help [command]` (tên lệnh hoặc từ khóa)
+- `/ping`, `/botinfo`, `/serverinfo`, `/userinfo [member]`, `/avatar [member]`
+- `/poll question options [hours] [multiple]`
+- `/slowmode seconds`
 - `/config logchannel`, `/config view`
 - `/kick`, `/ban`, `/softban`, `/timeout`, `/clear`, `/warn`, `/warnings`, `/temprole`
 - `/roleadd`, `/roleremove`, `/rolemenu create|list|delete`
@@ -72,6 +78,49 @@ Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát tr
 - `/reddit add|list|remove|toggle|test`
 
 Context menu trong **Apps** cung cấp thông tin user, avatar, bookmark và report user/message.
+
+## Help và tiện ích cộng đồng
+
+`/help` chỉ bạn nhìn thấy. Chọn nhóm rồi chọn lệnh để xem cú pháp, tham số, giá trị mặc định,
+phạm vi số và quyền mặc định. Mỗi trang có tối đa 8 lệnh; nút Trang chủ, Danh sách, Trước/Sau
+giúp quay lại nhanh. Menu hết hạn sau 3 phút không tương tác; dùng `/help` để mở lại.
+`/help command:bình chọn` tìm theo mô tả; `/help command:reddit add` mở chi tiết lệnh.
+Lệnh và context menu được lấy từ các module đang bật. Help không thay thế kiểm tra quyền lúc chạy.
+
+| Lệnh | Ví dụ / hành vi | Quyền người dùng |
+| --- | --- | --- |
+| `/ping` | Độ trễ Gateway Discord, không phải benchmark database | Mọi thành viên |
+| `/botinfo` | Version, thời gian hoạt động, số server/module | Mọi thành viên |
+| `/serverinfo` | Chủ server, ngày tạo, số thành viên/kênh/role/boost | Mọi thành viên trong server |
+| `/userinfo`, `/avatar` | Chọn member hoặc để trống để xem chính mình | Mọi thành viên trong server |
+| `/poll` | `question:Đi chơi ngày nào? options:Thứ bảy \| Chủ nhật hours:24 multiple:false` | Manage Messages của server |
+| `/slowmode` | `seconds:10`; `seconds:0` để tắt, tối đa 21600 giây | Manage Channels tại kênh |
+
+Poll có 2–10 lựa chọn khác nhau, mỗi lựa chọn tối đa 55 ký tự; câu hỏi tối đa 300 ký tự,
+thời lượng 1–168 giờ. Bình chọn hiển thị công khai trong kênh văn bản đang dùng lệnh,
+Discord quản lý phiếu bầu và thời điểm kết thúc nên không phụ thuộc process bot.
+Bot cần Send Messages và Send Polls tại kênh. Cooldown: một poll mỗi 30 giây/người/server.
+
+Slowmode áp dụng cho kênh văn bản hiện tại, bot cũng cần Manage Channels. Cooldown 10 giây/kênh.
+Thao tác ghi Discord audit reason và moderation log trong database; nếu lưu database lỗi sau khi
+Discord đã đổi slowmode, bot báo rõ kết quả một phần. Lệnh chỉ điều chỉnh slowmode gốc của Discord.
+
+`FEATURE_UTILITY=false` tắt ping/botinfo/serverinfo/poll. Userinfo/avatar dùng chung phần xử lý
+với context menu và đi theo `FEATURE_CONTEXT_MENUS`; slowmode đi theo `FEATURE_MODERATION`.
+Sau nâng cấp, sync command ở dev guild trước như hướng dẫn Discord bên trên.
+
+### Tham khảo thiết kế
+
+- Dyno: danh mục lệnh utility, serverinfo, poll và help — https://docs.dyno.gg/commands
+- Dyno: slowmode — https://docs.dyno.gg/modules/slowmode
+- MEE6: Welcome — https://help.mee6.xyz/support/solutions/101000251022
+- MEE6: Social Connectors — https://help.mee6.xyz/support/solutions/101000251024
+- MEE6: Polls — https://help.mee6.xyz/support/solutions/articles/101000490535-how-to-disable-polls-plugin-and-commands
+
+Bản này bổ sung tiện ích và cải thiện khả năng khám phá những tính năng đã có. XP/level,
+ticket, anti-spam riêng và nhạc chưa triển khai: chúng cần thiết kế lưu trữ, chống lạm dụng
+hoặc hạ tầng riêng; có thể phát triển sau khi chốt nhu cầu server. Welcome/role menu/Reddit
+đã có nên tiếp tục dùng module hiện tại.
 
 ## Cấu trúc
 

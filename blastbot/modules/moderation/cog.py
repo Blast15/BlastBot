@@ -460,6 +460,34 @@ class ModerationCog(commands.Cog):
         )
         await self._emit_log(interaction, action="TIMEOUT", target=member, reason=reason)
 
+    @app_commands.command(name="slowmode", description="Đặt thời gian chờ giữa tin nhắn trong kênh")
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_channels=True)
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.channel_id))
+    @app_commands.checks.bot_has_permissions(manage_channels=True)
+    @app_commands.checks.has_permissions(manage_channels=True)
+    @app_commands.describe(seconds="0 để tắt; tối đa 21600 giây (6 giờ)")
+    async def slowmode(self, interaction: discord.Interaction,
+                       seconds: app_commands.Range[int, 0, 21600]):
+        channel = interaction.channel
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                embed=error("Không hỗ trợ", "Dùng lệnh trong kênh văn bản cần chỉnh."),
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        await channel.edit(slowmode_delay=seconds, reason=f"Slowmode by {interaction.user.id}")
+        record = ModerationRecord(interaction.guild_id, interaction.user.id, channel.id,
+                                  f"#{channel.name}", "Điều chỉnh slowmode")
+        audit_ok = await self._persist_action("SLOWMODE", record, seconds=seconds)
+        description = f"{channel.mention}: **{seconds} giây**." if seconds else "Đã tắt slowmode."
+        await interaction.followup.send(
+            embed=success("Đã cập nhật slowmode", description) if audit_ok else warning(
+                "Đã cập nhật, nhưng audit lỗi", description + " Bản ghi database chưa được lưu."),
+            ephemeral=True,
+        )
+
     @app_commands.command(name="clear", description="Xóa tin nhắn gần đây, bỏ qua tin đã ghim")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_messages=True)

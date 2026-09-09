@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     reddit_poll_interval: int = Field(default=120, alias="REDDIT_POLL_INTERVAL", ge=60, le=3600)
     reddit_keyless_fallback: bool = Field(default=True, alias="REDDIT_KEYLESS_FALLBACK")
 
+    feature_utility: bool = Field(default=True, alias="FEATURE_UTILITY")
     feature_moderation: bool = Field(default=True, alias="FEATURE_MODERATION")
     feature_automation: bool = Field(default=True, alias="FEATURE_AUTOMATION")
     feature_roles: bool = Field(default=True, alias="FEATURE_ROLES")
