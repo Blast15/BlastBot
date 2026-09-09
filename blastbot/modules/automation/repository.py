@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, insert, literal, select
+from sqlalchemy import delete, func, insert, literal, select, update
 
 from blastbot.database.models import AutoMessage, Greeting
 from blastbot.database.session import Database
@@ -116,11 +116,12 @@ class AutomationRepository:
 
     async def toggle_auto_message(self, guild_id: int, auto_id: int, enabled: bool) -> bool:
         async with self._database.session() as session, session.begin():
-            row = await session.get(AutoMessage, auto_id)
-            if row is None or row.guild_id != guild_id:
-                return False
-            row.enabled = enabled
-            return True
+            result = await session.execute(
+                update(AutoMessage)
+                .where(AutoMessage.id == auto_id, AutoMessage.guild_id == guild_id)
+                .values(enabled=enabled)
+            )
+            return bool(result.rowcount)
 
     async def due_auto_messages(self, now: datetime) -> list[AutoMessage]:
         async with self._database.session() as session:
@@ -135,6 +136,6 @@ class AutomationRepository:
 
     async def mark_sent(self, auto_id: int, now: datetime) -> None:
         async with self._database.session() as session, session.begin():
-            row = await session.get(AutoMessage, auto_id)
-            if row:
-                row.last_sent = now
+            await session.execute(
+                update(AutoMessage).where(AutoMessage.id == auto_id).values(last_sent=now)
+            )

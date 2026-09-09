@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, func, insert, literal, select
+from sqlalchemy import delete, func, insert, literal, select, update
 
 from blastbot.database.models import RedditSubscription
 from blastbot.database.session import Database
@@ -83,14 +83,20 @@ class RedditRepository:
 
     async def set_enabled(self, guild_id: int, subscription_id: int, enabled: bool) -> bool:
         async with self._database.session() as session, session.begin():
-            row = await session.get(RedditSubscription, subscription_id)
-            if row is None or row.guild_id != guild_id:
-                return False
-            row.enabled = enabled
-            return True
+            result = await session.execute(
+                update(RedditSubscription)
+                .where(
+                    RedditSubscription.id == subscription_id,
+                    RedditSubscription.guild_id == guild_id,
+                )
+                .values(enabled=enabled)
+            )
+            return bool(result.rowcount)
 
     async def mark_seen(self, subscription_id: int, post_id: str) -> None:
         async with self._database.session() as session, session.begin():
-            row = await session.get(RedditSubscription, subscription_id)
-            if row is not None:
-                row.last_seen_post_id = post_id
+            await session.execute(
+                update(RedditSubscription)
+                .where(RedditSubscription.id == subscription_id)
+                .values(last_seen_post_id=post_id)
+            )
