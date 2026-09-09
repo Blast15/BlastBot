@@ -2,7 +2,7 @@
 
 BlastBot là Discord bot đa năng viết bằng Python, tập trung vào moderation, role, automation và theo dõi Reddit. Dự án dùng slash command, SQLite bất đồng bộ và cấu hình hoàn toàn qua biến môi trường.
 
-**Phiên bản hiện tại:** `4.1.0`
+**Phiên bản hiện tại:** `4.2.0`
 
 ## Tính năng
 
@@ -14,6 +14,7 @@ BlastBot là Discord bot đa năng viết bằng Python, tập trung vào modera
 - Help tương tác: menu nhóm/lệnh, phân trang, tìm theo mô tả, tham số và quyền mặc định.
 - Tiện ích: ping, botinfo, serverinfo, userinfo và avatar.
 - Bình chọn Discord gốc và slowmode kênh có audit log trong database.
+- AutoMod native kiểu Dyno: chống spam, mention spam/raid và chặn link invite Discord.
 - Cấu hình log channel và structured logging tùy chọn.
 
 ## Cài đặt
@@ -60,7 +61,7 @@ Không commit file `.env` hoặc token. Với Reddit OAuth, tạo application lo
 
 Bật **Server Members Intent** trong Developer Portal. Message Content Intent không cần thiết.
 
-Khi invite bot, chọn scope `bot` và `applications.commands`. Quyền tối thiểu phụ thuộc tính năng sử dụng: View Channels, Send Messages, Embed Links, Manage Roles, Moderate Members, Kick Members, Ban Members và Manage Messages. Role của bot phải nằm trên role/member mà bot quản lý.
+Khi invite bot, chọn scope `bot` và `applications.commands`. Quyền tối thiểu phụ thuộc tính năng sử dụng: View Channels, Send Messages, Embed Links, Manage Server, Manage Roles, Moderate Members, Kick Members, Ban Members và Manage Messages. Role của bot phải nằm trên role/member mà bot quản lý.
 
 Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát triển; chỉ dùng `global` khi cần publish command toàn cục, sau đó có thể trả về `none`.
 
@@ -71,6 +72,7 @@ Command không tự sync mặc định. Dùng `SYNC_MODE=dev_guild` khi phát tr
 - `/poll question options [hours] [multiple]`
 - `/slowmode seconds`
 - `/config logchannel`, `/config view`
+- `/automod setup [mention_limit]`, `/automod status`, `/automod disable`
 - `/kick`, `/ban`, `/softban`, `/timeout`, `/clear`, `/warn`, `/warnings`, `/temprole`
 - `/roleadd`, `/roleremove`, `/rolemenu create|list|delete`
 - `/greeting welcome|goodbye|disable|test`
@@ -105,6 +107,12 @@ Slowmode áp dụng cho kênh văn bản hiện tại, bot cũng cần Manage Ch
 Thao tác ghi Discord audit reason và moderation log trong database; nếu lưu database lỗi sau khi
 Discord đã đổi slowmode, bot báo rõ kết quả một phần. Lệnh chỉ điều chỉnh slowmode gốc của Discord.
 
+AutoMod dùng rule native của Discord nên vẫn hoạt động khi process BlastBot dừng và không cần
+Message Content Intent. `/automod setup` tạo hoặc cập nhật ba rule do BlastBot quản lý: anti-spam,
+mention spam/raid (mặc định tối đa 5 mention mỗi message) và chặn link `discord.gg`/
+`discord.com/invite`. Nếu đã cấu hình `/config logchannel`, rule cũng gửi alert vào kênh đó.
+`/automod disable` chỉ tắt các rule mang tên BlastBot, không đụng vào AutoMod rule khác của server.
+
 `FEATURE_UTILITY=false` tắt ping/botinfo/serverinfo/poll. Userinfo/avatar dùng chung phần xử lý
 với context menu và đi theo `FEATURE_CONTEXT_MENUS`; slowmode đi theo `FEATURE_MODERATION`.
 Sau nâng cấp, sync command ở dev guild trước như hướng dẫn Discord bên trên.
@@ -117,10 +125,10 @@ Sau nâng cấp, sync command ở dev guild trước như hướng dẫn Discord
 - MEE6: Social Connectors — https://help.mee6.xyz/support/solutions/101000251024
 - MEE6: Polls — https://help.mee6.xyz/support/solutions/articles/101000490535-how-to-disable-polls-plugin-and-commands
 
-Bản này bổ sung tiện ích và cải thiện khả năng khám phá những tính năng đã có. XP/level,
-ticket, anti-spam riêng và nhạc chưa triển khai: chúng cần thiết kế lưu trữ, chống lạm dụng
-hoặc hạ tầng riêng; có thể phát triển sau khi chốt nhu cầu server. Welcome/role menu/Reddit
-đã có nên tiếp tục dùng module hiện tại.
+AutoMod mới dùng rule native của Discord thay vì tự đọc message; cách này giữ bot không cần
+Message Content Intent và tránh thêm storage/worker chống spam riêng. XP/level, ticket và nhạc
+chưa triển khai vì cần storage, chống lạm dụng hoặc hạ tầng riêng; Welcome/role menu/Reddit đã có
+nên tiếp tục dùng module hiện tại.
 
 ## Cấu trúc
 
