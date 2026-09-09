@@ -26,6 +26,30 @@ class ContextMenusCog(commands.Cog):
         for menu in self._menus:
             self.bot.tree.remove_command(menu.name, type=menu.type)
 
+    @app_commands.command(
+        name="userinfo", description="Xem tài khoản, ngày tham gia và role thành viên"
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(member="Thành viên cần xem; để trống để xem chính bạn")
+    async def userinfo(
+        self, interaction: discord.Interaction, member: discord.Member | None = None
+    ):
+        target = member or interaction.user
+        if not isinstance(target, discord.Member):
+            raise app_commands.NoPrivateMessage()
+        await self.user_info(interaction, target)
+
+    @app_commands.command(name="avatar", description="Xem ảnh đại diện của thành viên")
+    @app_commands.guild_only()
+    @app_commands.describe(member="Thành viên cần xem; để trống để xem chính bạn")
+    async def avatar_command(
+        self, interaction: discord.Interaction, member: discord.Member | None = None
+    ):
+        target = member or interaction.user
+        if not isinstance(target, discord.Member):
+            raise app_commands.NoPrivateMessage()
+        await self.avatar(interaction, target)
+
     async def user_info(self, interaction: discord.Interaction, member: discord.Member) -> None:
         roles = [role.mention for role in reversed(member.roles[1:])]
         joined_at = (

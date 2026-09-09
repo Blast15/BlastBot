@@ -78,6 +78,8 @@ class BlastBotSmokeTests(unittest.IsolatedAsyncioTestCase):
             names = {command.qualified_name for command in commands_}
             self.assertIn("reddit add", names)
             self.assertIn("warn", names)
+            self.assertTrue({"ping", "botinfo", "serverinfo", "userinfo", "avatar",
+                             "poll", "slowmode"} <= names)
             self.assertNotIn("add", names)
             for name, items in help_cog._categories().items():
                 self.assertLessEqual(len(category_embed(name, items)), 6000)

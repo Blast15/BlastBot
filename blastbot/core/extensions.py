@@ -8,6 +8,8 @@ def enabled_extensions(settings: Settings) -> tuple[str, ...]:
         "blastbot.modules.help.cog",
         "blastbot.modules.configuration.cog",
     ]
+    if settings.feature_utility:
+        extensions.append("blastbot.modules.utility.cog")
     if settings.feature_moderation:
         extensions.append("blastbot.modules.moderation.cog")
     if settings.feature_roles:
