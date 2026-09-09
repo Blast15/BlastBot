@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -17,6 +18,7 @@ from blastbot.database.session import Database
 from blastbot.modules.automation.cog import AutomationCog, render_greeting
 from blastbot.modules.automation.service import validate_greeting_template
 from blastbot.modules.moderation.service import ModerationRecord
+from blastbot.shared.time import ensure_utc
 
 
 def settings(database_url: str) -> Settings:
@@ -114,6 +116,54 @@ class DatabaseReliabilityTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.app.database.dispose()
         self.tempdir.cleanup()
+
+    async def test_delivery_updates_use_one_statement_and_preserve_scope(self) -> None:
+        reddit_id = await self.app.reddit.add(1, 10, "python")
+        auto_id = await self.app.automation.add_auto_message(
+            guild_id=1, channel_id=10, content="message", interval_minutes=5, use_embed=False
+        )
+        now = datetime.now(UTC)
+        statements = []
+
+        def record(_conn, _cursor, statement, _parameters, _context, _many) -> None:
+            statements.append(statement)
+
+        reddit = self.app.reddit_repo
+        automation = self.app.automation_repo
+        cases = (
+            (reddit.set_enabled, (1, reddit_id, False), True),
+            (reddit.set_enabled, (1, reddit_id, False), True),
+            (reddit.set_enabled, (2, reddit_id, True), False),
+            (reddit.set_enabled, (1, reddit_id + 1, True), False),
+            (automation.toggle_auto_message, (1, auto_id, False), True),
+            (automation.toggle_auto_message, (1, auto_id, False), True),
+            (automation.toggle_auto_message, (2, auto_id, True), False),
+            (automation.toggle_auto_message, (1, auto_id + 1, True), False),
+            (reddit.mark_seen, (reddit_id, "new-post"), None),
+            (reddit.mark_seen, (reddit_id + 1, "missing"), None),
+            (automation.mark_sent, (auto_id, now), None),
+            (automation.mark_sent, (auto_id + 1, now), None),
+        )
+        engine = self.app.database.engine.sync_engine
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            for method, args, expected in cases:
+                with self.subTest(method=method.__name__, args=args):
+                    statements.clear()
+                    self.assertEqual(await method(*args), expected)
+                    self.assertEqual(len(statements), 1, statements)
+                    self.assertTrue(statements[0].startswith("UPDATE "), statements)
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+
+        subscriptions = await reddit.list_for_guild(1)
+        messages = await automation.list_auto_messages(1)
+        self.assertEqual(len(subscriptions), 1)
+        self.assertEqual(len(messages), 1)
+        self.assertFalse(subscriptions[0].enabled)
+        self.assertFalse(messages[0].enabled)
+        self.assertEqual(subscriptions[0].last_seen_post_id, "new-post")
+        self.assertEqual(ensure_utc(messages[0].last_sent), now)
 
     async def test_warn_concurrently_increments_exactly(self) -> None:
         async def warn(index: int) -> int:
